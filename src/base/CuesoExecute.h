@@ -22,6 +22,7 @@ class CuesoExecute {
       ~CuesoExecute();
       void createCuesoObjects();
       void executeCuesoSimulation();
+      void runAppUnitTests();
 
 };
 

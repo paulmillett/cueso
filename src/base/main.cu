@@ -1,25 +1,57 @@
 
 # include "CuesoExecute.h"
+# include <iostream>
+# include "../utils/GetPot"
+
+using std::cout;
+using std::endl;
 
 int main()
 {
+    try
+    {
 
-//	----------------------------------------------------------
-//	Create object that executes MESO simulation:
-//	----------------------------------------------------------
+        //	------------------------------------------------------
+        //	Create object that executes MESO simulation:
+        //	------------------------------------------------------
 
-	CuesoExecute currentJob;
+        CuesoExecute currentJob;
 
-//	----------------------------------------------------------
-//	Create simulation objects:
-//	----------------------------------------------------------
+        //	------------------------------------------------------
+        //	Run unit tests or simulation:
+        //	------------------------------------------------------
 
-	currentJob.createCuesoObjects();
+        GetPot InParams("input.dat");
+        bool runTests = InParams("UnitTests/runTests",0);
 
-//	----------------------------------------------------------
-//	Execute the simulation:
-//	----------------------------------------------------------
+        if(runTests)
+        {
 
-	currentJob.executeCuesoSimulation();
+            //	--------------------------------------------------
+            //	Execute unit tests for each App:
+            //	--------------------------------------------------
 
+            currentJob.runAppUnitTests();
+
+        }
+        else
+        {
+
+            //	--------------------------------------------------
+            //	Create simulation objects:
+            //	--------------------------------------------------
+
+            currentJob.createCuesoObjects();
+
+            //	--------------------------------------------------
+            //	Execute the simulation:
+            //	--------------------------------------------------
+
+            currentJob.executeCuesoSimulation();
+        }
+    }
+    catch (const char* errMsg)
+    {
+        cout << errMsg << endl;
+    }
 }

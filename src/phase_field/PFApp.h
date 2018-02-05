@@ -29,8 +29,10 @@ class PFApp : public CuesoBase {
         vector<double> c;
 
         // cuda members
+        int size;
         double * c_d;       // concentration array
         double * df_d;      // chemical potential array
+        double * cpyBuff_d; // Copy buffer for ansynchronous data transfer
         dim3 blocks;
         dim3 blockSize;
 
@@ -41,6 +43,11 @@ class PFApp : public CuesoBase {
         void initSystem();
         void computeInterval(int interval);
         void writeOutput(int step);
+        void runUnitTests();
+
+    private:
+        // unit tests
+        bool lapKernUnitTest();
 
 };
 

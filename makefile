@@ -9,7 +9,8 @@ TARGET_NAME_OPT = cueso
 TARGET_NAME_DBG = dbg$(TARGET_NAME_OPT)
 OBJ_PATH = ./obj
 CFLAGS = -std=c++11
-CUDAFLAGS = --gpu-architecture=compute_35 --gpu-code=sm_35
+#CUDAFLAGS = --gpu-architecture=compute_35 --gpu-code=sm_35
+CUDAFLAGS = 
 DBG_CFLAGS = $(CFLAGS) -g -DDEBUG
 OPT_CFLAGS = $(CFLAGS) -O3
 CU_DBG_CFLAGS = $(CFLAGS) $(CUDAFLAGS) -g -DDEBUG
@@ -69,11 +70,11 @@ opt : $(TARGET_PATH)/$(TARGET_NAME_OPT)
 
 # This rule makes the optimized binary by using mpicxx with the optimized ".o" files
 $(TARGET_PATH)/$(TARGET_NAME_OPT) : partialcleanopt $(OBJECTS_OPT) $(OBJECTS_CU_OPT)
-	$(NVCC) -o $(TARGET_PATH)/$(TARGET_NAME_OPT) $(OBJECTS_OPT) $(OBJECTS_CU_OPT) $(LFLAGS)
+	$(NVCC) $(CUDAFLAGS) -o $(TARGET_PATH)/$(TARGET_NAME_OPT) $(OBJECTS_OPT) $(OBJECTS_CU_OPT) $(LFLAGS)
 
 # This rule makes the debug binary by using mpicxx with the debug ".o" files
 $(TARGET_PATH)/$(TARGET_NAME_DBG) : partialcleandbg $(OBJECTS_DBG) $(OBJECTS_CU_DBG)
-	$(NVCC) -g -o $(TARGET_PATH)/$(TARGET_NAME_DBG) $(OBJECTS_DBG) $(OBJECTS_CU_DBG) $(LFLAGS)
+	$(NVCC) $(CUDAFLAGS) -o $(TARGET_PATH)/$(TARGET_NAME_DBG) $(OBJECTS_DBG) $(OBJECTS_CU_DBG) $(LFLAGS)
 
 partialcleandbg :
 	@if [ ! -d "$(TARGET_PATH)" ]; then mkdir -p "$(TARGET_PATH)"; fi

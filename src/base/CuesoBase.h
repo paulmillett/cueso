@@ -15,6 +15,7 @@ using std::string;
 class CuesoBase {
 
     public:
+        string appName;
 
         // -------------------------------------------------------------------
         // Define factory method that creates objects of CuesoBase sub-classes:
@@ -29,6 +30,7 @@ class CuesoBase {
         virtual void initSystem() = 0;
         virtual void computeInterval(int) = 0;
         virtual void writeOutput(int) = 0;
+        virtual void runUnitTests() = 0;
 
         // -------------------------------------------------------------------
         // Virtual destructor:

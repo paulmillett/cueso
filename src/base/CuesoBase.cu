@@ -27,7 +27,12 @@ CuesoBase* CuesoBase::CuesoObjectFactory(string specifier)
    // return the requested object:
    // -----------------------------------
 
-   if (specifier == "PFApp/") return new PFApp(InParams);
+   if (specifier == "PFApp/") 
+   {
+       CuesoBase* app = new PFApp(InParams);
+       app->appName = "PFApp";
+       return app;
+   }
 
    // return null if specifier is not expected
    return nullptr;

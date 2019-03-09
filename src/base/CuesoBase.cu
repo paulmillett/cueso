@@ -7,6 +7,7 @@
 
 // Phase-Field classes:
 # include "../phase_field/PFApp.h"
+# include "../phase_field/PFSips.h"
 
 // -------------------------------------------------------------------------
 // Factory method: this function returns an object determined
@@ -32,6 +33,12 @@ CuesoBase* CuesoBase::CuesoObjectFactory(string specifier)
        CuesoBase* app = new PFApp(InParams);
        app->appName = "PFApp";
        return app;
+   }
+ 	if (specifier == "PFSips/")
+   {
+   	CuesoBase* app = new PFSips(InParams);
+   	app->appName = "PFSips";
+   	return app;
    }
 
    // return null if specifier is not expected

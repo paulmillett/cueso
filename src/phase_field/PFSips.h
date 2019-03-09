@@ -1,15 +1,16 @@
 
-# ifndef PFAPP_H
-# define PFAPP_H
+# ifndef PFSIPS_H
+# define PFSIPS_H
 
 # include <vector>
 # include "../base/CuesoBase.h"
 # include "../utils/rand.h"
 # include "../utils/GetPot"
 
+
 using std::vector;
 
-class PFApp : public CuesoBase {
+class PFSips : public CuesoBase {
 
     private:
 
@@ -25,22 +26,44 @@ class PFApp : public CuesoBase {
         double kap;
         double dt;
         double dx,dy,dz;
+        double chiCond;
+        double phiCutoff;
+        double chiPS;
+        double chiPN;
+        double N;
+        double alpha;
+        double beta;
+        double eta;
+        double A;
+        double Tbath;
+        double Tinit;
+        double noiseStr;
+        double nu;
+        double gamma;
+        double D0;
+        double Mweight;
+        double Mvolume;
+        bool bx,by,bz;
         Rand rng;
         vector<double> c;
+        vector<double> chi;
+        vector<double> Mob;
 
         // cuda members
         int size;
         double * c_d;       // concentration array
         double * df_d;      // chemical potential array
+        double * ddf_d;		 // second derivateve FH array
         double * cpyBuff_d; // Copy buffer for ansynchronous data transfer
-        double * rndm_d;    // random number for thermal fluctuation 
+        double * chi_d;
+        double * Mob_d;
         dim3 blocks;
         dim3 blockSize;
 
     public:
 
-        PFApp(const GetPot&);
-        ~PFApp();
+        PFSips(const GetPot&);
+        ~PFSips();
         void initSystem();
         void computeInterval(int interval);
         void writeOutput(int step);
@@ -52,4 +75,4 @@ class PFApp : public CuesoBase {
 
 };
 
-# endif  // PFAPP_H
+# endif  // PFSips_H

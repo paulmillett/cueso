@@ -25,18 +25,17 @@ __global__ void calculateMobility(double* c,double* Mob,double M,int nx,int ny,i
         									 double gamma, double nu, double D0, double Mweight, double Mvolume);
 
 
-__global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob, double M, double dt, 
+__global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double* nonUniformLap, double M, double dt, 
 															 int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
 
 
 __global__ void populateCopyBufferSIPS(double* c, double* cpyBuff, int nx, int ny, int nz);
 
 
-__global__ void populateCopyBufferMOB(double* Mob, double* cpyBuff, int nx, int ny, int nz);
-
-
 // kernel for testing the laplacian function
 __global__ void testLapSIPS(double* f, int nx, int ny, int nz, double h, 
 									 bool bX, bool bY, bool bZ);
+__global__ void testNonUniformMob(double *f, double* b,int gid, int nx, int ny, int nz, double h,
+													bool bX, bool bY, bool bZ);
 
 #endif /* !PFSIPSKERNELS_H */

@@ -117,15 +117,15 @@ void PFSips::initSystem()
 	// TODO add nonsolvent depth!
 		
     // ----------------------------------------
-    // Initialize the concentration field:
+    // Initialize fields:
     // ----------------------------------------
-
-    for(size_t i=0;i<nxyz;i++)
-        c.push_back(co + 0.1*(rng.uniform()-0.5));
-    for(size_t i=0;i<nxyz;i++)
-        chi.push_back(chiPS);
-    for(size_t i=0;i<nxyz;i++)
-    	  Mob.push_back(M);
+	 srand(time(NULL));      // setting the seed  
+	 // random initialization
+    for(size_t i=0;i<nxyz;i++) { 
+    	  double r = (double)rand()/RAND_MAX;
+        c.push_back(co + 0.1*(r-0.5));
+    }
+    
     // ----------------------------------------
     // Allocate memory on device and copy data
     // and copy data from host to device
@@ -143,17 +143,13 @@ void PFSips::initSystem()
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &Mob_d,size);
     cudaCheckErrors("cudaMalloc fail");
+    cudaMalloc((void**) &nonUniformLap_d,size);
+    cudaCheckErrors("cudaMalloc fail");
     // --------------------
     // TODO - random noise
     // --------------------
     // copy concentration array to device
     cudaMemcpy(c_d,&c[0],size,cudaMemcpyHostToDevice);
-    cudaCheckErrors("cudaMemcpy H2D fail");
-    // copy chi concentration array to device
-    cudaMemcpy(chi_d,&chi[0],size,cudaMemcpyHostToDevice);
-    cudaCheckErrors("cudaMemcpy H2D fail");
-    // mobility check for vtkoutput
-    cudaMemcpy(Mob_d,&Mob[0],size,cudaMemcpyHostToDevice);
     cudaCheckErrors("cudaMemcpy H2D fail");
 
 }
@@ -198,10 +194,10 @@ void PFSips::computeInterval(int interval)
      
         // calculate the laplacian of the chemical potential, then update c_d
         // using an Euler update
-        lapChemPotAndUpdateBoundaries<<<blocks,blockSize>>>(c_d,df_d,Mob_d,M,dt,nx,ny,nz,dx,
-        																		bx,by,bz);
+        lapChemPotAndUpdateBoundaries<<<blocks,blockSize>>>(c_d,df_d,Mob_d,nonUniformLap_d,
+        																		M,dt,nx,ny,nz,dx,bx,by,bz);
         cudaDeviceSynchronize();
-        cudaCheckAsyncErrors("lapChemPotAndUpdate kernel fail");
+        cudaCheckAsyncErrors("lapChemPotAndUpdateBoundaries kernel fail");
         // ---------------------------------------------
         //  TODO add random fluctuations with cuRand
  		  // ---------------------------------------------
@@ -214,9 +210,7 @@ void PFSips::computeInterval(int interval)
     populateCopyBufferSIPS<<<blocks,blockSize>>>(c_d,cpyBuff_d,nx,ny,nz);
     cudaMemcpyAsync(&c[0],c_d,size,cudaMemcpyDeviceToHost);
     cudaCheckErrors("cudaMemcpyAsync D2H fail");
-    populateCopyBufferSIPS<<<blocks,blockSize>>>(Mob_d,cpyBuff_d,nx,ny,nz);
-    cudaMemcpyAsync(&Mob[0],Mob_d,size,cudaMemcpyDeviceToHost);
-    cudaCheckErrors("cudaMemcpyAsync D2H fail");
+    
 }
 
 
@@ -275,55 +269,7 @@ void PFSips::writeOutput(int step)
     // -----------------------------------
 
     outfile.close();
-    
-    // -----------------------------------
-    // Output mobility field
-    // -----------------------------------
-    /*
-    ofstream outfile2;
-    stringstream filenamecombine2;
-    filenamecombine2 << "vtkoutput/mob_" << step << ".vtk";
-    filename = filenamecombine2.str();
-    outfile2.open(filename.c_str(), std::ios::out);
-
-    // -----------------------------------
-    //	Write the 'vtk' file header:
-    // -----------------------------------
-
-    outfile2 << "# vtk DataFile Version 3.1" << endl;
-    outfile2 << "VTK file containing grid data" << endl;
-    outfile2 << "ASCII" << endl;
-    outfile2 << " " << endl;
-    outfile2 << "DATASET STRUCTURED_POINTS" << endl;
-    outfile2 << "DIMENSIONS" << d << nx << d << ny << d << nz << endl;
-    outfile2 << "ORIGIN " << d << 0 << d << 0 << d << 0 << endl;
-    outfile2 << "SPACING" << d << 1.0 << d << 1.0 << d << 1.0 << endl;
-    outfile2 << " " << endl;
-    outfile2 << "POINT_DATA " << nxyz << endl;
-    outfile2 << "SCALARS c float" << endl;
-    outfile2 << "LOOKUP_TABLE default" << endl;
-
-    // -----------------------------------
-    //	Write the data:
-    // NOTE: x-data increases fastest,
-    //       then y-data, then z-data
-    // -----------------------------------
-
-    for(size_t k=0;k<nz;k++)
-        for(size_t j=0;j<ny;j++)
-            for(size_t i=0;i<nx;i++)
-            {
-                int id = nx*ny*k + nx*j + i;
-                outfile2 << Mob[id] << endl;
-            }
-
-    // -----------------------------------
-    //	Close the file:
-    // -----------------------------------
-
-    outfile2.close();*/
-    
-    
+        
 }
 
 

@@ -46,17 +46,15 @@ class PFSips : public CuesoBase {
         bool bx,by,bz;
         Rand rng;
         vector<double> c;
-        vector<double> chi;
-        vector<double> Mob;
 
         // cuda members
         int size;
-        double * c_d;       // concentration array
-        double * df_d;      // chemical potential array
-        double * ddf_d;		 // second derivateve FH array
-        double * cpyBuff_d; // Copy buffer for ansynchronous data transfer
-        double * chi_d;
-        double * Mob_d;
+        double * c_d;       			// concentration array
+        double * df_d;      			// chemical potential array
+        double * cpyBuff_d; 			// Copy buffer for ansynchronous data transfer
+        double * chi_d;     			// interaction parameter
+        double * Mob_d;     			// mobility
+        double * nonUniformLap_d;	// laplacian of mobility and df
         dim3 blocks;
         dim3 blockSize;
 

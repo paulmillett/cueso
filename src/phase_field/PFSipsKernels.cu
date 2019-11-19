@@ -8,6 +8,8 @@
 #include "PFSipsKernels.h"
 #include <stdio.h>
 #include <math.h>
+#include <curand.h>
+#include <curand_kernel.h>
 
 
 
@@ -108,15 +110,15 @@ __device__ double laplacianNonUniformMob(double *f, double *Mob,int gid, int x, 
    double bz2 = 2.0/(1.0/mobZr + 1.0/bo);
    double lapx = (xl*bx1 + xr*bx2 - (bx1+bx2)*fo)/(h*h); 
    double lapy = (yl*by1 + yr*by2 - (by1+by2)*fo)/(h*h);
-	double lapz = (zl*bz1 + zr*bz2 - (bz1+bz2)*fo)/(h*h);
-	double lapNonUniform = lapx + lapy + lapz;
+   double lapz = (zl*bz1 + zr*bz2 - (bz1+bz2)*fo)/(h*h);
+   double lapNonUniform = lapx + lapy + lapz;
    return lapNonUniform;
 }   
    
 /*********************************************************
    * Compute Laplacian with user specified 
    * boundary conditions (UpdateBoundaries)
-	******************************************************/
+   ******************************************************/
 	
 __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int z, 
 															int nx, int ny, int nz, double h, 
@@ -128,14 +130,14 @@ __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int
     // -----------------------------------
    // X-Direction Boundaries
    // -----------------------------------
-	if (bX) {
-		// PBCs (x-dir.)
-		if(x == 0) xlid = nx*ny*z + nx*y + nx-1;
-		else xlid = nx*ny*z + nx*y + x-1;
-		if(x == nx-1) xrid = nx*ny*z + nx*y + 0;
-		else xrid = nx*ny*z + nx*y + x+1;
-	}
-	else {
+   if (bX) {
+      // PBCs (x-dir.)
+      if(x == 0) xlid = nx*ny*z + nx*y + nx-1;
+      else xlid = nx*ny*z + nx*y + x-1;
+      if(x == nx-1) xrid = nx*ny*z + nx*y + 0;
+      else xrid = nx*ny*z + nx*y + x+1;
+   }
+   else {
 	 	// no-flux BC (x-dir.)
 		if (x == 0) xlid = nx*ny*z + nx*y + x;
 		else xlid = nx*ny*z + nx*y + x-1;
@@ -192,10 +194,12 @@ __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int
   * Compute diffusive interaction parameter in x-direction
   ***********************************************************/
 
-__device__ double chiDiffuse(double chiPS, double chiPN, double chiCond, int current_step, double dt)
+__device__ double chiDiffuse(double water_CB, double chiPS, double chiPN, double chiCond, int current_step, double dt)
 {
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
-	double chiPS_diff = (chiPS-chiPN)*erf((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+chiPN;
+   double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
+   double chiPS_diff = chiPN*water_diff + chiPS*(1.0-water_diff);
+//	double chiPS_diff = (chiPS-chiPN)*erf((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+chiPN;
 	return chiPS_diff;
 }
 
@@ -215,13 +219,12 @@ __device__ double chiDiffuse(double chiPS, double chiPN, double chiCond, int cur
 __device__ double freeEnergyBiFH(double cc, double chiPS_diff, double N, double lap_c, double kap, double A)
 {
    double c_fh = 0.0;
-   if (cc < 0.0) c_fh = 0.001;
+   if (cc < 0.0) c_fh = 0.0001;
    else if (cc > 1.0) c_fh = 0.999;
    else c_fh = cc;
    double FH = (log(c_fh) + 1.0)/N - log(1.0-c_fh) - 1.0 + chiPS_diff*(1.0-2.0*c_fh) - kap*lap_c;
-   if (cc <= 0.0) FH = -1.5*A*sqrt(-cc) - kap*lap_c; 
-   // TODO -- ADD VARIABLE  A   
-	return FH;
+   if (cc <= 0.0) FH = -1.5*A*sqrt(-cc) - kap*lap_c;   
+   return FH;
 }
 
 /*************************************************************
@@ -232,7 +235,7 @@ __device__ double d2dc2_FH(double cc, double N)
 {
    double c2_fh = 0.0;
    if (cc < 0.0) c2_fh = 0.0001;
-   else if (cc > 1.0) c2_fh = 0.9999;
+   else if (cc > 1.0) c2_fh = 0.999;
    else c2_fh = cc;
    double FH_2 = 0.5 * (1.0/(N*c2_fh) + 1.0/(1.0-c2_fh));
    return FH_2;	
@@ -248,7 +251,7 @@ __device__ double philliesDiffusion(double cc, double gamma, double nu,
 	double cc_d = 1.0;
 	double rho = Mweight/Mvolume;
 	if (cc >= 1.0) cc_d = 1.0 * rho; // convert phi to g/L	
-	else if (cc < 0.0) cc_d = 0.001 * rho; // convert phi to g/L 
+	else if (cc < 0.0) cc_d = 0.0001 * rho; // convert phi to g/L 
 	else cc_d = cc * rho; // convert phi to g/L
 	double Dp = D0 * exp(-gamma * pow(cc_d,nu));
 	return Dp;
@@ -325,7 +328,7 @@ __global__ void calculateLapBoundaries(double* c,double* df, int nx, int ny, int
   *******************************************************/
 
 __global__ void calculateChemPotFH(double* c,double* df, double* chi, double kap, double A,
-                                   double chiCond, double chiPS, double chiPN, double N, 
+                                   double water_CB, double chiCond, double chiPS, double chiPN, double N, 
                                    int nx, int ny, int nz, int current_step, double dt)
 {
     // get unique thread id
@@ -338,7 +341,7 @@ __global__ void calculateChemPotFH(double* c,double* df, double* chi, double kap
         double cc = c[gid];
         double lap_c = df[gid];
         // compute interaction parameter
-        chi[gid] = chiDiffuse(chiPS,chiPN,chiCond,current_step,dt);
+        chi[gid] = chiDiffuse(water_CB,chiPS,chiPN,chiCond,current_step,dt);
         double cchi = chi[gid];
         // compute chemical potential
         df[gid] = freeEnergyBiFH(cc,cchi,N,lap_c,kap,A); 
@@ -351,9 +354,9 @@ __global__ void calculateChemPotFH(double* c,double* df, double* chi, double kap
   * parameter and stores it in the Mob_d array.
   *******************************************************/
   
-__global__ void calculateMobility(double* c, double* Mob, double M, int nx, int ny, int nz,
+__global__ void calculateMobility(double* c, double* Mob, double*chi, double chiFreeze, double M, int nx, int ny, int nz,
 											 double phiCutoff, double N,
-        									 double gamma, double nu, double D0, double Mweight, double Mvolume)
+        									 double gamma, double nu, double D0, double Mweight, double Mvolume,double chiPS,double chiPN, double mobReSize)
 {
 	 // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -365,10 +368,20 @@ __global__ void calculateMobility(double* c, double* Mob, double M, int nx, int 
         double cc = c[gid];
         double FH2 = d2dc2_FH(cc,N);
         double D_phil = philliesDiffusion(cc,gamma,nu,D0,Mweight,Mvolume);
+//        double chiCheck = chi[gid];
         M = D0*D_phil/FH2;
-        if (M > D0) M = D0;     // making mobility max = 1
-        else if (M < 0.0) M = 0.001; // mobility min = 0.001 
-        if (phiCutoff < cc) M *= 0.001; // freezing in structure
+        if (M > 1.0) M = 1.0;     // making mobility max = 1
+        else if (M < 0.0) M = 0.000001; // mobility min = 0.001 
+		  //if (phiCutoff < cc) M *= 0.001; // freezing in structure.. necessary?
+     //   double chiFraction = (chiCheck - chiPS)/(chiPN - chiPS); 
+	//	  double mobilityScale = 0.95 + 0.25 * log(1.0225- chiFraction);// convex
+       // double mobilityScale = exp(-4.0*chiFraction);
+		  if (cc > phiCutoff) { 
+              double xNorm = (cc - phiCutoff)/(1.0 - phiCutoff);
+              double mobScale = 1.0*exp(-10.0*xNorm); // not a step wise decrease
+              M *= mobScale;
+          }
+        M *= mobReSize;
         Mob[gid] = M;
      }		  
 }
@@ -400,11 +413,32 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
     }
 }
 
+
 /************************************************************
-  * Add random fluctuations for non-trivial solution (cuRand)
+  * Add random fluctuations for (cuRand)
+  * initialize cuRAND 
+  * add thermal fluctuations
   ***********************************************************/
 
-// TODO
+__global__ void addNoise(unsigned long seed, double *thermFluc, double *c,int nx, int ny, int nz, int current_step, double phiCutoff){
+    // get unique thread id
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        double cc = c[gid];
+        curandState state;
+        double offset = gid + current_step;
+        if (cc < phiCutoff){
+            curand_init(seed, gid, offset, &state);
+            thermFluc[gid] = curand_uniform_double(&state);
+            c[gid] += 0.1*(thermFluc[gid] - 0.5);
+        }
+    }
+}
+
 
 /*********************************************************
   * Copies the contents of c into cpyBuffer so the c data

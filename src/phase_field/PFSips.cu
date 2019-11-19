@@ -7,6 +7,7 @@
 # include "PFSipsKernels.h"
 # include "../utils/cudaErrorMacros.h" // for cudaCheckErrors & cudaCheckAsyncErrors
 
+
 using std::string;
 using std::stringstream;
 using std::cout;
@@ -37,13 +38,21 @@ PFSips::PFSips(const GetPot& input_params)
     by = input_params("PFSips/by",1);
     bz = input_params("PFSips/bz",1);
     numSteps = input_params("Time/nstep",1);
-    co = input_params("PFSips/co",0.16);
+    co = input_params("PFSips/co",0.20);
+    c2 = input_params("PFSips/c2",0.20);
+    c3 = input_params("PFSips/c3",0.20);
+    r1 = input_params("PFSips/r1",1.0);
+    r2 = input_params("PFSips/r2",0.0);
+    NS_depth = input_params("PFSips/NS_depth",10);
     M = input_params("PFSips/M",1.0);
     kap = input_params("PFSips/kap",1.0);
+    water_CB = input_params("PFSips/water_CB",1.0);
+    mobReSize = input_params("PFSips/mobReSize",0.35);
     chiPS = input_params("PFSips/chiPS",0.034);
-    chiPN = input_params("PFSips/chiPN",2.5);
+    chiPN = input_params("PFSips/chiPN",1.5);
     chiCond = input_params("PFSips/chiCond",0);
-    phiCutoff = input_params("PFSips/phiCutoff",0.5);
+    chiFreeze = input_params("PFSips/chiFreeze",1.75);
+    phiCutoff = input_params("PFSips/phiCutoff",0.75);
     N = input_params("PFSips/N",100.0);
     A = input_params("PFSips/A",1.0);
     Tinit = input_params("PFSips/Tinit",298);
@@ -55,7 +64,6 @@ PFSips::PFSips(const GetPot& input_params)
     Mvolume = input_params("PFSips/Mvolume",0.1);
     numOutputs = input_params("Output/numOutputs",1);
     outInterval = numSteps/numOutputs;
-
     // ---------------------------------------
     // Set up cuda kernel launch variables:
     // ---------------------------------------
@@ -103,6 +111,7 @@ PFSips::~PFSips()
     cudaFree(cpyBuff_d);
     cudaFree(chi_d);
     cudaFree(Mob_d);
+    cudaFree(thermFluc_d);
 }
 
 
@@ -121,9 +130,35 @@ void PFSips::initSystem()
     // ----------------------------------------
 	 srand(time(NULL));      // setting the seed  
 	 // random initialization
-    for(size_t i=0;i<nxyz;i++) { 
+	 int xHolder = 0;
+     int zone1 = r1*(nx-NS_depth); 
+	 int zone2 = r2*(nx-NS_depth);
+	 int zone3 = nx - zone1 - zone2 - NS_depth; 
+    for(size_t i=0;i<nxyz;i++) {
     	  double r = (double)rand()/RAND_MAX;
-        c.push_back(co + 0.1*(r-0.5));
+        while (xHolder < NS_depth) {
+            c.push_back(0.0);
+            xHolder++;
+        }
+        xHolder = 0;
+        while (xHolder < zone1) {
+     	  		r = (double)rand()/RAND_MAX; // get random number
+        		c.push_back(co + 0.1*(r-0.5));
+        		xHolder++;
+        	}
+        xHolder = 0;
+        while (xHolder < zone2) {
+        	   r = (double)rand()/RAND_MAX;
+        	   c.push_back(c2 + 0.1*(r-0.5));
+        	   xHolder++;
+        }
+        xHolder = 0;
+        while (xHolder < zone3) {
+            r = (double)rand()/RAND_MAX;
+            c.push_back(c3 + 0.1*(r-0.5));
+            xHolder++;
+        }
+        xHolder = 0;
     }
     
     // ----------------------------------------
@@ -144,6 +179,8 @@ void PFSips::initSystem()
     cudaMalloc((void**) &Mob_d,size);
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &nonUniformLap_d,size);
+    cudaCheckErrors("cudaMalloc fail");
+    cudaMalloc((void**) &thermFluc_d,size);
     cudaCheckErrors("cudaMalloc fail");
     // --------------------
     // TODO - random noise
@@ -181,14 +218,14 @@ void PFSips::computeInterval(int interval)
         cudaDeviceSynchronize();
         
         // calculate the chemical potential and store in df_d
-        calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,chi_d,kap,A,chiCond,chiPS,chiPN,
+        calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,chi_d,kap,A,water_CB,chiCond,chiPS,chiPN,
         														N,nx,ny,nz,current_step,dt);
         cudaCheckAsyncErrors("calculateChemPotFH kernel fail");
         cudaDeviceSynchronize();
         
         // calculate mobility and store it in Mob_d
-        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,nx,ny,nz,phiCutoff,
-        														N,gamma,nu,D0,Mweight,Mvolume);
+        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,chi_d,chiFreeze,M,nx,ny,nz,phiCutoff,
+        														N,gamma,nu,D0,Mweight,Mvolume,chiPS,chiPN,mobReSize);
         cudaCheckAsyncErrors("calculateMobility kernel fail");
         cudaDeviceSynchronize();
      
@@ -198,9 +235,15 @@ void PFSips::computeInterval(int interval)
         																		M,dt,nx,ny,nz,dx,bx,by,bz);
         cudaDeviceSynchronize();
         cudaCheckAsyncErrors("lapChemPotAndUpdateBoundaries kernel fail");
-        // ---------------------------------------------
-        //  TODO add random fluctuations with cuRand
- 		  // ---------------------------------------------
+        // -----------------------------
+        // TODO
+        // add thermal fluctuations
+        // -----------------------------
+        addNoise<<<blocks,blockSize>>>(seed, thermFluc_d, c_d, nx, ny, nz, current_step, phiCutoff);
+        cudaCheckAsyncErrors("addNoise kernel fail");
+        cudaDeviceSynchronize();
+
+        
     }
 
     // ----------------------------------------
@@ -261,7 +304,9 @@ void PFSips::writeOutput(int step)
             for(size_t i=0;i<nx;i++)
             {
                 int id = nx*ny*k + nx*j + i;
-                outfile << c[id] << endl;
+                double point = c[id];
+                if (point < 1e-10) point = 0.0; // making really small numbers == 0 
+                outfile << point << endl;
             }
 
     // -----------------------------------

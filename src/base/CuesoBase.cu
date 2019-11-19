@@ -41,6 +41,7 @@ CuesoBase* CuesoBase::CuesoObjectFactory(string specifier)
    	return app;
    }
 
+   
    // return null if specifier is not expected
    return nullptr;
 

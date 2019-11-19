@@ -6,6 +6,8 @@
 # include "../base/CuesoBase.h"
 # include "../utils/rand.h"
 # include "../utils/GetPot"
+# include <curand.h>
+# include <curand_kernel.h>
 
 
 using std::vector;
@@ -20,16 +22,21 @@ class PFSips : public CuesoBase {
         int numSteps;
         int numOutputs;
         int outInterval;
-        double co;
+        double co,c2,c3;
+        double r1,r2;
         double M;
         double w;
         double kap;
         double dt;
         double dx,dy,dz;
+        double water_CB;
+        int NS_depth;
+        double mobReSize;
         double chiCond;
         double phiCutoff;
         double chiPS;
         double chiPN;
+        double chiFreeze;
         double N;
         double alpha;
         double beta;
@@ -55,8 +62,11 @@ class PFSips : public CuesoBase {
         double * chi_d;     			// interaction parameter
         double * Mob_d;     			// mobility
         double * nonUniformLap_d;	// laplacian of mobility and df
+        double * thermFluc_d;
+        curandState * devState;
         dim3 blocks;
         dim3 blockSize;
+        unsigned long seed;
 
     public:
 

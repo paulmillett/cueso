@@ -17,14 +17,14 @@
 // Device Functions
 // -------------------------------------------------------
 
+
 /**********************************************************
    * Laplacian of non-uniform mobility field 
    * for Cahn-Hilliard Euler update
    ********************************************************/
 
 __device__ double laplacianNonUniformMob(double *f, double *Mob,int gid, int x, int y, int z,
-													int nx, int ny, int nz, double h,
-													bool bX, bool bY, bool bZ)
+                                         int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ)
 {
 	// get id of neighbors for no-flux and PBCs
    int xlid,xrid,ylid,yrid,zlid,zrid;
@@ -80,97 +80,98 @@ __device__ double laplacianNonUniformMob(double *f, double *Mob,int gid, int x, 
     	else zrid = nx*ny*(z+1) + nx*y + x;
 	}
 
-	// ------------------------------------------
-	// begin laplacian
+    // ------------------------------------------
+    // begin laplacian
 	// ------------------------------------------
 	
-   // get values of neighbors for mobility
-   double mobXl = Mob[xlid];
-   double mobXr = Mob[xrid];
-   double mobYl = Mob[ylid];
-   double mobYr = Mob[yrid];
-   double mobZl = Mob[zlid];
-   double mobZr = Mob[zrid];
-   // get values of neighbors for mu
-   double xl = f[xlid];
-   double xr = f[xrid];
-   double yl = f[ylid];
-   double yr = f[yrid];
-   double zl = f[zlid];
-   double zr = f[zrid];
-   // get value of current points
-   double bo = Mob[gid];
-   double fo = f[gid];
-   // begin laplacian
-   double bx1 = 2.0/(1.0/mobXl + 1.0/bo);
-   double bx2 = 2.0/(1.0/mobXr + 1.0/bo);
-   double by1 = 2.0/(1.0/mobYl + 1.0/bo);
-   double by2 = 2.0/(1.0/mobYr + 1.0/bo);
-   double bz1 = 2.0/(1.0/mobZl + 1.0/bo);
-   double bz2 = 2.0/(1.0/mobZr + 1.0/bo);
-   double lapx = (xl*bx1 + xr*bx2 - (bx1+bx2)*fo)/(h*h); 
-   double lapy = (yl*by1 + yr*by2 - (by1+by2)*fo)/(h*h);
-   double lapz = (zl*bz1 + zr*bz2 - (bz1+bz2)*fo)/(h*h);
-   double lapNonUniform = lapx + lapy + lapz;
-   return lapNonUniform;
+    // get values of neighbors for mobility
+    double mobXl = Mob[xlid];
+    double mobXr = Mob[xrid];
+    double mobYl = Mob[ylid];
+    double mobYr = Mob[yrid];
+    double mobZl = Mob[zlid];
+    double mobZr = Mob[zrid];
+    // get values of neighbors for mu
+    double xl = f[xlid];
+    double xr = f[xrid];
+    double yl = f[ylid];
+    double yr = f[yrid];
+    double zl = f[zlid];
+    double zr = f[zrid];
+    // get value of current points
+    double bo = Mob[gid];
+    double fo = f[gid];
+    // begin laplacian
+    double bx1 = 2.0/(1.0/mobXl + 1.0/bo);
+    double bx2 = 2.0/(1.0/mobXr + 1.0/bo);
+    double by1 = 2.0/(1.0/mobYl + 1.0/bo);
+    double by2 = 2.0/(1.0/mobYr + 1.0/bo);
+    double bz1 = 2.0/(1.0/mobZl + 1.0/bo);
+    double bz2 = 2.0/(1.0/mobZr + 1.0/bo);
+    double lapx = (xl*bx1 + xr*bx2 - (bx1+bx2)*fo)/(h*h); 
+    double lapy = (yl*by1 + yr*by2 - (by1+by2)*fo)/(h*h);
+    double lapz = (zl*bz1 + zr*bz2 - (bz1+bz2)*fo)/(h*h);
+    double lapNonUniform = lapx + lapy + lapz;
+    return lapNonUniform;
 }   
    
+
 /*********************************************************
    * Compute Laplacian with user specified 
    * boundary conditions (UpdateBoundaries)
    ******************************************************/
 	
 __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int z, 
-															int nx, int ny, int nz, double h, 
-															bool bX, bool bY, bool bZ)
+								            int nx, int ny, int nz, double h, 
+								            bool bX, bool bY, bool bZ)
 {
     // get id of neighbors with periodic boundary conditions
     // and no-flux conditions
-   int xlid,xrid,ylid,yrid,zlid,zrid;
+    int xlid,xrid,ylid,yrid,zlid,zrid;
     // -----------------------------------
-   // X-Direction Boundaries
-   // -----------------------------------
-   if (bX) {
-      // PBCs (x-dir.)
-      if(x == 0) xlid = nx*ny*z + nx*y + nx-1;
-      else xlid = nx*ny*z + nx*y + x-1;
-      if(x == nx-1) xrid = nx*ny*z + nx*y + 0;
-      else xrid = nx*ny*z + nx*y + x+1;
-   }
-   else {
-	 	// no-flux BC (x-dir.)
+    // X-Direction Boundaries
+    // -----------------------------------
+    if (bX) {
+        // PBCs (x-dir.)
+        if(x == 0) xlid = nx*ny*z + nx*y + nx-1;
+        else xlid = nx*ny*z + nx*y + x-1;
+        if(x == nx-1) xrid = nx*ny*z + nx*y + 0;
+        else xrid = nx*ny*z + nx*y + x+1;
+    }
+    else {
+        // no-flux BC (x-dir.)
 		if (x == 0) xlid = nx*ny*z + nx*y + x;
 		else xlid = nx*ny*z + nx*y + x-1;
 		if (x == nx-1) xrid = nx*ny*z + nx*y + x;
 		else xrid = nx*ny*z + nx*y + x+1;
-   }
-   // -----------------------------------
-   // Y-Direction Boundaries
-   // -----------------------------------
+    }
+    // -----------------------------------
+    // Y-Direction Boundaries
+    // -----------------------------------
 	if (bY) {
-		// PBC Apply
-	   if(y == 0) ylid = nx*ny*z + nx*(ny-1) + x;
+        // PBC Apply
+        if(y == 0) ylid = nx*ny*z + nx*(ny-1) + x;
     	else ylid = nx*ny*z + nx*(y-1) + x;
     	if(y == ny-1) yrid = nx*ny*z + nx*0 + x;
     	else yrid = nx*ny*z + nx*(y+1) + x;
-   }
-   else {
+    }
+    else {
    	// no-flux BC (y-dir.)
-      if(y == 0) ylid = nx*ny*z + nx*y + x;
+        if(y == 0) ylid = nx*ny*z + nx*y + x;
     	else ylid = nx*ny*z + nx*(y-1) + x;
     	if(y == ny-1) yrid = nx*ny*z + nx*y + x;
     	else yrid = nx*ny*z + nx*(y+1) + x;
-	}
-   // -----------------------------------
-   // Z-Direction Boundaries
-   // -----------------------------------
+    }
+    // -----------------------------------
+    // Z-Direction Boundaries
+    // -----------------------------------
 	if (bZ) {
 		// PBC Apply (z-dir.)
    	if(z == 0) zlid = nx*ny*(nz-1) + nx*y + x;
     	else zlid = nx*ny*(z-1) + nx*y + x;
     	if(z == nz-1) zrid = nx*ny*0 + nx*y + x;
     	else zrid = nx*ny*(z+1) + nx*y + x;
-   }
+    }
 	else {
 		// no-flux BC (z-dir.)
 		if(z == 0) zlid = nx*ny*z + nx*y + x;
@@ -178,15 +179,15 @@ __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int
     	if(z == nz-1) zrid = nx*ny*z + nx*y + x;
     	else zrid = nx*ny*(z+1) + nx*y + x;
 	}
-   // get values of neighbors
-   double xl = f[xlid];
-   double xr = f[xrid];
-   double yl = f[ylid];
-   double yr = f[yrid];
-   double zl = f[zlid];
-   double zr = f[zrid];
-   double lap = (xl+xr+yl+yr+zl+zr-6.0*f[gid])/(h*h);
-   return lap;
+    // get values of neighbors
+    double xl = f[xlid];
+    double xr = f[xrid];
+    double yl = f[ylid];
+    double yr = f[yrid];
+    double zl = f[zlid];
+    double zr = f[zrid];
+    double lap = (xl+xr+yl+yr+zl+zr-6.0*f[gid])/(h*h);
+    return lap;
 }
 
 
@@ -196,10 +197,9 @@ __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int
 
 __device__ double chiDiffuse(double water_CB, double chiPS, double chiPN, double chiCond, int current_step, double dt)
 {
-	int idx = blockIdx.x*blockDim.x + threadIdx.x;
-   double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
-   double chiPS_diff = chiPN*water_diff + chiPS*(1.0-water_diff);
-//	double chiPS_diff = (chiPS-chiPN)*erf((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+chiPN;
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
+    double chiPS_diff = chiPN*water_diff + chiPS*(1.0-water_diff);
 	return chiPS_diff;
 }
 
@@ -208,11 +208,11 @@ __device__ double chiDiffuse(double water_CB, double chiPS, double chiPN, double
 	* of the  binary Flory-Huggins free energy of mixing with
 	* respect to c
 	*
-	* F = ...
+	* F = c*log(c)/N + (1-c)*log(1-c) + chi*c*(1-c)
 	*
 	*
 	* dF/dc = (log(c) + 1)/N - log(1 - c) - 1.0 
-	*         + chi*(1 - 2*c) ... (- kap*lapc?)
+	*         + chi*(1 - 2*c)
 	*
 	***********************************************************/
 
@@ -242,11 +242,11 @@ __device__ double d2dc2_FH(double cc, double N)
 }
 
 /*************************************************************
-  * Compute diffusion coefficient via phillies exp.
+  * Compute diffusion coefficient via phillies eq.
   ***********************************************************/
 
 __device__ double philliesDiffusion(double cc, double gamma, double nu, 
-												double D0, double Mweight, double Mvolume)
+								    double D0, double Mweight, double Mvolume)
 {
 	double cc_d = 1.0;
 	double rho = Mweight/Mvolume;
@@ -327,7 +327,7 @@ __global__ void calculateLapBoundaries(double* c,double* df, int nx, int ny, int
   * order parameter and stores it in the df_d array.
   *******************************************************/
 
-__global__ void calculateChemPotFH(double* c,double* df, double* chi, double kap, double A,
+__global__ void calculateChemPotFH(double* c,double* df, double kap, double A,
                                    double water_CB, double chiCond, double chiPS, double chiPN, double N, 
                                    int nx, int ny, int nz, int current_step, double dt)
 {
@@ -341,8 +341,7 @@ __global__ void calculateChemPotFH(double* c,double* df, double* chi, double kap
         double cc = c[gid];
         double lap_c = df[gid];
         // compute interaction parameter
-        chi[gid] = chiDiffuse(water_CB,chiPS,chiPN,chiCond,current_step,dt);
-        double cchi = chi[gid];
+        double cchi = chiDiffuse(water_CB,chiPS,chiPN,chiCond,current_step,dt);
         // compute chemical potential
         df[gid] = freeEnergyBiFH(cc,cchi,N,lap_c,kap,A); 
     }
@@ -354,9 +353,10 @@ __global__ void calculateChemPotFH(double* c,double* df, double* chi, double kap
   * parameter and stores it in the Mob_d array.
   *******************************************************/
   
-__global__ void calculateMobility(double* c, double* Mob, double*chi, double chiFreeze, double M, int nx, int ny, int nz,
-											 double phiCutoff, double N,
-        									 double gamma, double nu, double D0, double Mweight, double Mvolume,double chiPS,double chiPN, double mobReSize)
+__global__ void calculateMobility(double* c, double* Mob, double M, int nx, int ny, int nz,
+                                  double phiCutoff, double N,double gamma, double nu, 
+                                  double D0, double Mweight, double Mvolume,double chiPS,
+                                  double chiPN, double mobReSize)
 {
 	 // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -368,25 +368,19 @@ __global__ void calculateMobility(double* c, double* Mob, double*chi, double chi
         double cc = c[gid];
         double FH2 = d2dc2_FH(cc,N);
         double D_phil = philliesDiffusion(cc,gamma,nu,D0,Mweight,Mvolume);
-//        double chiCheck = chi[gid];
         M = D0*D_phil/FH2;
         if (M > 1.0) M = 1.0;     // making mobility max = 1
         else if (M < 0.0) M = 0.000001; // mobility min = 0.001 
-		  //if (phiCutoff < cc) M *= 0.001; // freezing in structure.. necessary?
-     //   double chiFraction = (chiCheck - chiPS)/(chiPN - chiPS); 
-	//	  double mobilityScale = 0.95 + 0.25 * log(1.0225- chiFraction);// convex
-       // double mobilityScale = exp(-4.0*chiFraction);
-		  if (cc > phiCutoff) { 
-              double xNorm = (cc - phiCutoff)/(1.0 - phiCutoff);
-              double mobScale = 1.0*exp(-10.0*xNorm); // not a step wise decrease
-              M *= mobScale;
-          }
+        // further decrease mobility for vitrification
+        if (cc > phiCutoff) { 
+            double xNorm = (cc - phiCutoff)/(1.0 - phiCutoff);
+            double mobScale = 1.0*exp(-10.0*xNorm); // not a step wise decrease
+            M *= mobScale;
+        }
         M *= mobReSize;
         Mob[gid] = M;
      }		  
 }
-
-
 
 
 /************************************************************************************
@@ -396,8 +390,8 @@ __global__ void calculateMobility(double* c, double* Mob, double*chi, double chi
   ***********************************************************************************/
 
 __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double* nonUniformLap,
-															 double M, double dt, int nx, int ny, int nz, double h, 
-															 bool bX, bool bY, bool bZ)
+                                              double M, double dt, int nx, int ny, int nz, double h, 
+                                              bool bX, bool bY, bool bZ)
 {
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -419,8 +413,21 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
   * initialize cuRAND 
   * add thermal fluctuations
   ***********************************************************/
+__global__ void init_cuRAND(unsigned long seed,curandState *state,int nx,int ny,int nz)
+{
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        curand_init(seed,gid,0,&state[gid]);//&state);//[gid]);
+    }
+}
 
-__global__ void addNoise(unsigned long seed, double *thermFluc, double *c,int nx, int ny, int nz, int current_step, double phiCutoff){
+__global__ void addNoise(double thermFluc, double *c,int nx, int ny, int nz, 
+                         double phiCutoff,curandState *state)
+{
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
     int idy = blockIdx.y*blockDim.y + threadIdx.y;
@@ -428,14 +435,8 @@ __global__ void addNoise(unsigned long seed, double *thermFluc, double *c,int nx
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        double cc = c[gid];
-        curandState state;
-        double offset = gid + current_step;
-        if (cc < phiCutoff){
-            curand_init(seed, gid, offset, &state);
-            thermFluc[gid] = curand_uniform_double(&state);
-            c[gid] += 0.1*(thermFluc[gid] - 0.5);
-        }
+        thermFluc = curand_uniform_double(&state[gid]);
+        c[gid] += 0.1*(thermFluc - 0.5);
     }
 }
 

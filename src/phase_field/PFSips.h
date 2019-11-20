@@ -22,8 +22,8 @@ class PFSips : public CuesoBase {
         int numSteps;
         int numOutputs;
         int outInterval;
-        double co,c2,c3;
-        double r1,r2;
+        double co,c2,c3;        // polymer concentration fields
+        double r1,r2;           // ratio for 1st and 2nd layers
         double M;
         double w;
         double kap;
@@ -53,20 +53,20 @@ class PFSips : public CuesoBase {
         bool bx,by,bz;
         Rand rng;
         vector<double> c;
-
+        double thermFluc_d;
+    
         // cuda members
         int size;
         double * c_d;       			// concentration array
         double * df_d;      			// chemical potential array
         double * cpyBuff_d; 			// Copy buffer for ansynchronous data transfer
-        double * chi_d;     			// interaction parameter
         double * Mob_d;     			// mobility
-        double * nonUniformLap_d;	// laplacian of mobility and df
-        double * thermFluc_d;
-        curandState * devState;
+        double * nonUniformLap_d;	    // laplacian of mobility and df
+        curandState * devState;         // state for cuRAND
+        unsigned long seed;             // seed for cuRAND
         dim3 blocks;
         dim3 blockSize;
-        unsigned long seed;
+        
 
     public:
 

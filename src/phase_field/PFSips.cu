@@ -109,9 +109,8 @@ PFSips::~PFSips()
     cudaFree(c_d);
     cudaFree(df_d);
     cudaFree(cpyBuff_d);
-    cudaFree(chi_d);
     cudaFree(Mob_d);
-    cudaFree(thermFluc_d);
+    cudaFree(devState);
 }
 
 
@@ -122,11 +121,9 @@ PFSips::~PFSips()
 
 void PFSips::initSystem()
 {
-
-	// TODO add nonsolvent depth!
 		
     // ----------------------------------------
-    // Initialize fields:
+    // Initialize concentration fields:
     // ----------------------------------------
 	 srand(time(NULL));      // setting the seed  
 	 // random initialization
@@ -135,29 +132,21 @@ void PFSips::initSystem()
 	 int zone2 = r2*(nx-NS_depth);
 	 int zone3 = nx - zone1 - zone2 - NS_depth; 
     for(size_t i=0;i<nxyz;i++) {
-    	  double r = (double)rand()/RAND_MAX;
-        while (xHolder < NS_depth) {
-            c.push_back(0.0);
-            xHolder++;
-        }
+        double r = (double)rand()/RAND_MAX;
+        // create NonSolvent layer
+        while (xHolder < NS_depth) {c.push_back(0.0);xHolder++;}
         xHolder = 0;
-        while (xHolder < zone1) {
-     	  		r = (double)rand()/RAND_MAX; // get random number
-        		c.push_back(co + 0.1*(r-0.5));
-        		xHolder++;
-        	}
+        // initialize first polymer layer
+        while (xHolder < zone1) {r = (double)rand()/RAND_MAX; 
+            c.push_back(co + 0.1*(r-0.5)); xHolder++;}
         xHolder = 0;
-        while (xHolder < zone2) {
-        	   r = (double)rand()/RAND_MAX;
-        	   c.push_back(c2 + 0.1*(r-0.5));
-        	   xHolder++;
-        }
+        // initialize second polymer layer
+        while (xHolder < zone2) {r = (double)rand()/RAND_MAX; 
+            c.push_back(c2 + 0.1*(r-0.5)); xHolder++;}
         xHolder = 0;
-        while (xHolder < zone3) {
-            r = (double)rand()/RAND_MAX;
-            c.push_back(c3 + 0.1*(r-0.5));
-            xHolder++;
-        }
+        // initialize third polymer layer
+        while (xHolder < zone3) {r = (double)rand()/RAND_MAX; 
+            c.push_back(c3 + 0.1*(r-0.5)); xHolder++;}
         xHolder = 0;
     }
     
@@ -174,21 +163,24 @@ void PFSips::initSystem()
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &cpyBuff_d,size);
     cudaCheckErrors("cudaMalloc fail");
-    cudaMalloc((void**) &chi_d,size);
-    cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &Mob_d,size);
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &nonUniformLap_d,size);
     cudaCheckErrors("cudaMalloc fail");
-    cudaMalloc((void**) &thermFluc_d,size);
+    cudaMalloc((void**) &devState,sizeof(curandState));
     cudaCheckErrors("cudaMalloc fail");
-    // --------------------
-    // TODO - random noise
-    // --------------------
     // copy concentration array to device
     cudaMemcpy(c_d,&c[0],size,cudaMemcpyHostToDevice);
     cudaCheckErrors("cudaMemcpy H2D fail");
-
+    
+    // ----------------------------------------
+    // Initialize thermal fluctuations of
+    // polymer concentration
+    // ----------------------------------------
+    
+    init_cuRAND<<<blocks,blockSize>>>(time(NULL),devState,nx,ny,nz);
+    
+    
 }
 
 
@@ -218,28 +210,26 @@ void PFSips::computeInterval(int interval)
         cudaDeviceSynchronize();
         
         // calculate the chemical potential and store in df_d
-        calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,chi_d,kap,A,water_CB,chiCond,chiPS,chiPN,
-        														N,nx,ny,nz,current_step,dt);
+        calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,kap,A,water_CB,chiCond,chiPS,chiPN,
+        								         N,nx,ny,nz,current_step,dt);
         cudaCheckAsyncErrors("calculateChemPotFH kernel fail");
         cudaDeviceSynchronize();
         
         // calculate mobility and store it in Mob_d
-        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,chi_d,chiFreeze,M,nx,ny,nz,phiCutoff,
-        														N,gamma,nu,D0,Mweight,Mvolume,chiPS,chiPN,mobReSize);
+        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,nx,ny,nz,phiCutoff,
+        								        N,gamma,nu,D0,Mweight,Mvolume,chiPS,chiPN,mobReSize);
         cudaCheckAsyncErrors("calculateMobility kernel fail");
         cudaDeviceSynchronize();
      
         // calculate the laplacian of the chemical potential, then update c_d
         // using an Euler update
         lapChemPotAndUpdateBoundaries<<<blocks,blockSize>>>(c_d,df_d,Mob_d,nonUniformLap_d,
-        																		M,dt,nx,ny,nz,dx,bx,by,bz);
-        cudaDeviceSynchronize();
+        												    M,dt,nx,ny,nz,dx,bx,by,bz);
         cudaCheckAsyncErrors("lapChemPotAndUpdateBoundaries kernel fail");
-        // -----------------------------
-        // TODO
-        // add thermal fluctuations
-        // -----------------------------
-        addNoise<<<blocks,blockSize>>>(seed, thermFluc_d, c_d, nx, ny, nz, current_step, phiCutoff);
+        cudaDeviceSynchronize();
+        
+        // add thermal fluctuations of polymer concentration
+        addNoise<<<blocks,blockSize>>>(thermFluc_d, c_d, nx, ny, nz, phiCutoff,devState);
         cudaCheckAsyncErrors("addNoise kernel fail");
         cudaDeviceSynchronize();
 

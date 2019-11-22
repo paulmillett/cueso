@@ -198,7 +198,6 @@ __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int
 __device__ double chiDiffuse(double water_CB, double chiPS, double chiPN, double chiCond, int current_step, double dt)
 {
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
-	//double chiPS_diff = (chiPS-chiPN)*erf((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+chiPN;
     double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
     double chiPS_diff = chiPN*water_diff + chiPS*(1.0-water_diff);
 	return chiPS_diff;
@@ -329,7 +328,7 @@ __global__ void calculateLapBoundaries(double* c,double* df, int nx, int ny, int
   *******************************************************/
 
 
-__global__ void calculateChemPotFH(double* c,double* df, /*double* chi,*/ double kap, double A, double water_CB,
+__global__ void calculateChemPotFH(double* c,double* df, double kap, double A, double water_CB,
                                    double chiCond, double chiPS, double chiPN, double N, 
                                    int nx, int ny, int nz, int current_step, double dt)
 {
@@ -343,8 +342,7 @@ __global__ void calculateChemPotFH(double* c,double* df, /*double* chi,*/ double
         double cc = c[gid];
         double lap_c = df[gid];
         // compute interaction parameter
-        double chi/*[gid]*/ = chiDiffuse(water_CB,chiPS,chiPN,chiCond,current_step,dt);
-        //double cchi = chi[gid];
+        double chi = chiDiffuse(water_CB,chiPS,chiPN,chiCond,current_step,dt);
         // compute chemical potential
         df[gid] = freeEnergyBiFH(cc,chi,N,lap_c,kap,A); 
     }
@@ -360,10 +358,6 @@ __global__ void calculateMobility(double* c, double* Mob, double M,double mobReS
 											 double phiCutoff, double N,
         									 double gamma, double nu, double D0, double Mweight, double Mvolume)
 {
-	// issue within this function........ 
-    // see what things have changed or what needs to be done....
-    // TODO 
-    // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
     int idy = blockIdx.y*blockDim.y + threadIdx.y;
     int idz = blockIdx.z*blockDim.z + threadIdx.z;
@@ -413,11 +407,9 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
 }
 
 
-/************************************************************
-  * Add random fluctuations for (cuRand)
-  * initialize cuRAND 
-  * add thermal fluctuations
-  ***********************************************************/
+/**********************************************************************
+  * initialize cuRAND for thermal fluctuations of polymerconcentration
+  *********************************************************************/
 __global__ void init_cuRAND(unsigned long seed,curandState *state,int nx,int ny,int nz)
 {
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -426,7 +418,7 @@ __global__ void init_cuRAND(unsigned long seed,curandState *state,int nx,int ny,
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        curand_init(seed,gid,0,&state[gid]);//&state);//[gid]);
+        curand_init(seed,gid,0,&state[gid]);
     }
 }
 
@@ -446,7 +438,6 @@ __global__ void addNoise(double *c,int nx, int ny, int nz, double dt,
         int gid = nx*ny*idz + nx*idy + idx;
         
         double noise = curand_uniform_double(&state[gid]);
-        //double r = 0.1*(thermFluc-0.5)*dt;
         double cc = c[gid];
         // add random fluctuations with euler update
         if (cc > phiCutoff) noise = 0.5; // no fluctuations for phi < 0

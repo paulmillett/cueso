@@ -112,7 +112,6 @@ PFSips::~PFSips()
     cudaFree(cpyBuff_d);
     cudaFree(Mob_d);
     cudaFree(nonUniformLap_d);
-//    cudaFree(chi_d);
     cudaFree(Mob_d);
     cudaFree(devState);
 }
@@ -136,7 +135,6 @@ void PFSips::initSystem()
     int zone2 = r2*(nx-NS_depth);
     int zone3 = nx - zone1 - zone2 - NS_depth; 
     for(size_t i=0;i<nxyz;i++) {
-        //c.push_back(0.0);
         double r = (double)rand()/RAND_MAX;
         // create NonSolvent layer
         while (xHolder < NS_depth) 
@@ -184,8 +182,6 @@ void PFSips::initSystem()
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &cpyBuff_d,size);
     cudaCheckErrors("cudaMalloc fail");
-//    cudaMalloc((void**) &chi_d,size);
-//    cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &Mob_d,size);
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &nonUniformLap_d,size);

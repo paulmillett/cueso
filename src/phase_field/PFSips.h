@@ -8,10 +8,7 @@
 # include "../utils/GetPot"
 # include <curand.h>
 # include <curand_kernel.h>
-<<<<<<< HEAD
 
-=======
->>>>>>> fixCuRAND
 
 using std::vector;
 
@@ -35,10 +32,8 @@ class PFSips : public CuesoBase {
         double dx,dy,dz;
         double water_CB;
         int NS_depth;
-        double mobReSize;
         double chiCond;
         double phiCutoff;
-        double water_CB;
         double chiPS;
         double chiPN;
         double chiFreeze;
@@ -65,14 +60,8 @@ class PFSips : public CuesoBase {
         double * c_d;       			// concentration array
         double * df_d;      			// chemical potential array
         double * cpyBuff_d; 			// Copy buffer for ansynchronous data transfer
-<<<<<<< HEAD
         double * Mob_d;     			// mobility
         double * nonUniformLap_d;	    // laplacian of mobility and df
-=======
-//        double * chi_d;     			// interaction parameter
-        double * Mob_d;     			// mobility
-        double * nonUniformLap_d;	// laplacian of mobility and df
->>>>>>> fixCuRAND
         curandState * devState;         // state for cuRAND
         unsigned long seed;             // seed for cuRAND
         dim3 blocks;

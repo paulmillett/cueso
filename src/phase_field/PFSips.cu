@@ -39,7 +39,9 @@ PFSips::PFSips(const GetPot& input_params)
     numSteps = input_params("Time/nstep",1);
     co = input_params("PFSips/co",0.16);
     M = input_params("PFSips/M",1.0);
+    mobReSize = input_params("PFSips/mobReSize",0.35);
     kap = input_params("PFSips/kap",1.0);
+    water_CB = input_params("PFSips/water_CB",1.0);
     chiPS = input_params("PFSips/chiPS",0.034);
     chiPN = input_params("PFSips/chiPN",2.5);
     chiCond = input_params("PFSips/chiCond",0);
@@ -101,8 +103,9 @@ PFSips::~PFSips()
     cudaFree(c_d);
     cudaFree(df_d);
     cudaFree(cpyBuff_d);
-    cudaFree(chi_d);
+//    cudaFree(chi_d);
     cudaFree(Mob_d);
+    cudaFree(devState);
 }
 
 
@@ -139,11 +142,13 @@ void PFSips::initSystem()
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &cpyBuff_d,size);
     cudaCheckErrors("cudaMalloc fail");
-    cudaMalloc((void**) &chi_d,size);
-    cudaCheckErrors("cudaMalloc fail");
+//    cudaMalloc((void**) &chi_d,size);
+//    cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &Mob_d,size);
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &nonUniformLap_d,size);
+    cudaCheckErrors("cudaMalloc fail");
+    cudaMalloc((void**) &devState,/*nxyz*/sizeof(curandState));
     cudaCheckErrors("cudaMalloc fail");
     // --------------------
     // TODO - random noise
@@ -151,6 +156,12 @@ void PFSips::initSystem()
     // copy concentration array to device
     cudaMemcpy(c_d,&c[0],size,cudaMemcpyHostToDevice);
     cudaCheckErrors("cudaMemcpy H2D fail");
+    // ----------------------------------------
+    // Initialize thermal fluctuations of
+    // polymer concentration
+    // ----------------------------------------
+    
+    init_cuRAND<<<blocks,blockSize>>>(time(NULL),devState,nx,ny,nz);
 
 }
 
@@ -181,13 +192,13 @@ void PFSips::computeInterval(int interval)
         cudaDeviceSynchronize();
         
         // calculate the chemical potential and store in df_d
-        calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,chi_d,kap,A,chiCond,chiPS,chiPN,
+        calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,/*chi_d,*/kap,A,water_CB,chiCond,chiPS,chiPN,
         														N,nx,ny,nz,current_step,dt);
         cudaCheckAsyncErrors("calculateChemPotFH kernel fail");
         cudaDeviceSynchronize();
         
         // calculate mobility and store it in Mob_d
-        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,nx,ny,nz,phiCutoff,
+        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,mobReSize,nx,ny,nz,phiCutoff,
         														N,gamma,nu,D0,Mweight,Mvolume);
         cudaCheckAsyncErrors("calculateMobility kernel fail");
         cudaDeviceSynchronize();
@@ -200,7 +211,11 @@ void PFSips::computeInterval(int interval)
         cudaCheckAsyncErrors("lapChemPotAndUpdateBoundaries kernel fail");
         // ---------------------------------------------
         //  TODO add random fluctuations with cuRand
- 		  // ---------------------------------------------
+        // ---------------------------------------------
+        // add thermal fluctuations of polymer concentration
+        addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, phiCutoff,devState);
+        cudaCheckAsyncErrors("addNoise kernel fail");
+        cudaDeviceSynchronize();
     }
 
     // ----------------------------------------

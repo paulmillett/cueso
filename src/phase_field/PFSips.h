@@ -6,7 +6,8 @@
 # include "../base/CuesoBase.h"
 # include "../utils/rand.h"
 # include "../utils/GetPot"
-
+# include <curand.h>
+# include <curand_kernel.h>
 
 using std::vector;
 
@@ -22,12 +23,14 @@ class PFSips : public CuesoBase {
         int outInterval;
         double co;
         double M;
+        double mobReSize;
         double w;
         double kap;
         double dt;
         double dx,dy,dz;
         double chiCond;
         double phiCutoff;
+        double water_CB;
         double chiPS;
         double chiPN;
         double N;
@@ -52,9 +55,11 @@ class PFSips : public CuesoBase {
         double * c_d;       			// concentration array
         double * df_d;      			// chemical potential array
         double * cpyBuff_d; 			// Copy buffer for ansynchronous data transfer
-        double * chi_d;     			// interaction parameter
+//        double * chi_d;     			// interaction parameter
         double * Mob_d;     			// mobility
         double * nonUniformLap_d;	// laplacian of mobility and df
+        curandState * devState;         // state for cuRAND
+        unsigned long seed;             // seed for cuRAND
         dim3 blocks;
         dim3 blockSize;
 

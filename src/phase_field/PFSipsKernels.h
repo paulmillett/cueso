@@ -7,6 +7,8 @@
 
 #ifndef PFSIPSKERNELS_H
 #define PFSIPSKERNELS_H
+# include <curand.h>
+# include <curand_kernel.h>
 
 // kernel for evolving c-field using finite difference to solve
 // the Cahn-Hilliard equation
@@ -15,12 +17,12 @@ __global__ void calculateLapBoundaries(double* c, double* df, int nx, int ny, in
 													double h, bool bX, bool bY, bool bZ);
 
 
-__global__ void calculateChemPotFH(double* c, double* df, double* chi, double kap, double A, 
+__global__ void calculateChemPotFH(double* c, double* df, /*double* chi,*/ double kap, double A, double water_CB, 
 											  double chiCond, double chiPS, double chiPN, double N, 
 											  int nx, int ny, int nz, int current_step, double dt);
 
 
-__global__ void calculateMobility(double* c,double* Mob,double M,int nx,int ny,int nz,
+__global__ void calculateMobility(double* c,double* Mob,double M,double mobReSize,int nx,int ny,int nz,
 											 double phiCutoff, double N,
         									 double gamma, double nu, double D0, double Mweight, double Mvolume);
 
@@ -30,6 +32,13 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
 
 
 __global__ void populateCopyBufferSIPS(double* c, double* cpyBuff, int nx, int ny, int nz);
+
+
+__global__ void init_cuRAND(unsigned long seed, curandState* state,int nx, int ny, int nz);
+
+
+__global__ void addNoise(double* c, int nx, int ny, int nz, double dt, 
+                         double phiCutoff, curandState * state);
 
 
 // kernel for testing the laplacian function

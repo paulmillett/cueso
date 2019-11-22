@@ -110,6 +110,7 @@ PFSips::~PFSips()
     cudaFree(df_d);
     cudaFree(cpyBuff_d);
     cudaFree(Mob_d);
+    cudaFree(nonUniformLap_d);
     cudaFree(devState);
 }
 
@@ -127,26 +128,43 @@ void PFSips::initSystem()
     // ----------------------------------------
 	 srand(time(NULL));      // setting the seed  
 	 // random initialization
-	 int xHolder = 0;
-     int zone1 = r1*(nx-NS_depth); 
-	 int zone2 = r2*(nx-NS_depth);
-	 int zone3 = nx - zone1 - zone2 - NS_depth; 
+    int xHolder = 0;
+    int zone1 = r1*(nx-NS_depth); 
+    int zone2 = r2*(nx-NS_depth);
+    int zone3 = nx - zone1 - zone2 - NS_depth; 
     for(size_t i=0;i<nxyz;i++) {
+        //c.push_back(0.0);
         double r = (double)rand()/RAND_MAX;
         // create NonSolvent layer
-        while (xHolder < NS_depth) {c.push_back(0.0);xHolder++;}
+        while (xHolder < NS_depth) 
+        {
+            c.push_back(0.0);
+            xHolder++;
+        }
         xHolder = 0;
         // initialize first polymer layer
-        while (xHolder < zone1) {r = (double)rand()/RAND_MAX; 
-            c.push_back(co + 0.1*(r-0.5)); xHolder++;}
+        while (xHolder < zone1) 
+        {
+            r = (double)rand()/RAND_MAX; 
+            c.push_back(co + 0.1*(r-0.5)); 
+            xHolder++;
+        }
         xHolder = 0;
         // initialize second polymer layer
-        while (xHolder < zone2) {r = (double)rand()/RAND_MAX; 
-            c.push_back(c2 + 0.1*(r-0.5)); xHolder++;}
+        while (xHolder < zone2) 
+        {
+            r = (double)rand()/RAND_MAX; 
+            c.push_back(c2 + 0.1*(r-0.5)); 
+            xHolder++;
+        }
         xHolder = 0;
         // initialize third polymer layer
-        while (xHolder < zone3) {r = (double)rand()/RAND_MAX; 
-            c.push_back(c3 + 0.1*(r-0.5)); xHolder++;}
+        while (xHolder < zone3) 
+        {
+            r = (double)rand()/RAND_MAX; 
+            c.push_back(c3 + 0.1*(r-0.5)); 
+            xHolder++;
+        }
         xHolder = 0;
     }
     
@@ -167,7 +185,7 @@ void PFSips::initSystem()
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &nonUniformLap_d,size);
     cudaCheckErrors("cudaMalloc fail");
-    cudaMalloc((void**) &devState,sizeof(curandState));
+    cudaMalloc((void**) &devState,sizeof(curandState)*nxyz);
     cudaCheckErrors("cudaMalloc fail");
     // copy concentration array to device
     cudaMemcpy(c_d,&c[0],size,cudaMemcpyHostToDevice);
@@ -211,13 +229,13 @@ void PFSips::computeInterval(int interval)
         
         // calculate the chemical potential and store in df_d
         calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,kap,A,water_CB,chiCond,chiPS,chiPN,
-        								         N,nx,ny,nz,current_step,dt);
+        								     N,nx,ny,nz,current_step,dt);
         cudaCheckAsyncErrors("calculateChemPotFH kernel fail");
         cudaDeviceSynchronize();
         
         // calculate mobility and store it in Mob_d
         calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,nx,ny,nz,phiCutoff,
-        								        N,gamma,nu,D0,Mweight,Mvolume,chiPS,chiPN,mobReSize);
+        								        N,gamma,nu,D0,Mweight,Mvolume,mobReSize);
         cudaCheckAsyncErrors("calculateMobility kernel fail");
         cudaDeviceSynchronize();
      
@@ -295,7 +313,7 @@ void PFSips::writeOutput(int step)
             {
                 int id = nx*ny*k + nx*j + i;
                 double point = c[id];
-                if (point < 1e-10) point = 0.0; // making really small numbers == 0 
+                //if (point < 1e-10) point = 0.0; // making really small numbers == 0 
                 outfile << point << endl;
             }
 

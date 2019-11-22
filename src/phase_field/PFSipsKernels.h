@@ -22,10 +22,10 @@ __global__ void calculateChemPotFH(double* c, double* df, double kap, double A,
 
 
 __global__ void calculateMobility(double* c,double* Mob,double M,int nx,int ny,int nz,
-								  double phiCutoff, double N, double gamma, double nu, double D0, double Mweight, double Mvolume,double chiPS,double chiNS, double mobReSize);
+								  double phiCutoff, double N, double gamma, double nu, double D0, double Mweight, double Mvolume,double mobReSize);
 
 
-__global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double* nonUniformLap, double M, double dt, 
+__global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double*                                                      nonUniformLap, double M, double dt, 
 				                              int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
 
 

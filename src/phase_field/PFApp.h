@@ -33,6 +33,7 @@ class PFApp : public CuesoBase {
         double * c_d;       // concentration array
         double * df_d;      // chemical potential array
         double * cpyBuff_d; // Copy buffer for ansynchronous data transfer
+        double * rndm_d;    // random number for thermal fluctuation 
         dim3 blocks;
         dim3 blockSize;
 

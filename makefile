@@ -3,7 +3,7 @@
 #################
 SHELL = /bin/bash
 CC = g++ 
-NVCC = nvcc
+NVCC = nvcc -I $(CUDA_HOME)/include
 TARGET_PATH = ./bin
 TARGET_NAME_OPT = cueso
 TARGET_NAME_DBG = dbg$(TARGET_NAME_OPT)

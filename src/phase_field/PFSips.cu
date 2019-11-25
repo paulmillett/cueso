@@ -248,9 +248,9 @@ void PFSips::computeInterval(int interval)
         cudaDeviceSynchronize();
 
         // add thermal fluctuations of polymer concentration
-       // addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, current_step, chiCond, water_CB, phiCutoff, devState);
-       // cudaCheckAsyncErrors("addNoise kernel fail");
-       // cudaDeviceSynchronize();
+        addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, current_step, chiCond, water_CB, phiCutoff, devState);
+        cudaCheckAsyncErrors("addNoise kernel fail");
+        cudaDeviceSynchronize();
     }
 
     // ----------------------------------------

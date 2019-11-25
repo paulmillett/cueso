@@ -379,14 +379,21 @@ __global__ void calculateMobility(double* c, double* Mob, double M,double mobReS
         double D_phil = philliesDiffusion(cc,gamma,nu,D0,Mweight,Mvolume);
         M = D0*D_phil/FH2;
         if (M > 1.0) M = 1.0;     // making mobility max = 1
-        else if (M < 0.0) M = 0.001; // mobility min = 0.001 
+        else if (M < 0.0) M = 0.001; // mobility min = 0.001
+        // exponential decrease in mobility 
+        // after phiCutoff has been reached
         if (cc > phiCutoff) { 
             double xNorm = (cc - phiCutoff)/(1.0 - phiCutoff);
-            double mobScale = 1.0*exp(-10.0*xNorm); // not a step wise decrease
+            double mobScale = 1.0*exp(-10.0*xNorm); // 
             M *= mobScale;
         }
-        //double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
+        // ---------------------------------------------------------
+        // TODO 
+        // scaling mobility based on water concentration
+        // use lower diffusion instead...?
+        // ---------------------------------------------------------
         // testing mobility scaling with water concentration
+        //double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
         /*if (water_cutoff > 0.30) {
             double xWnorm = (water_cutoff - 0.30)/(water_CB-0.30);
             double waterScale = 1.0 - (0+((1.0 - 0.0)/(1.0 + exp(-10.0*(xWnorm-(0.0+1.0)/2)))));
@@ -458,12 +465,25 @@ __global__ void addNoise(double *c,int nx, int ny, int nz, double dt, int curren
         // add random fluctuations with euler update
         if (cc > phiCutoff) noise = 0.5; // no fluctuations for phi < 0
         else if (cc < 0.0) noise = 0.5;  // no fluctuations for phi > phiCutoff
-        //if (water_cutoff > /*water_CB*/0.8) noise = 0.5;
+        // ------------------------------------------------------
+        // TODO scaling noise
+        // ------------------------------------------------------
+        // need to minimise noise effect on vitrified morphology
+        // testing different methods
+        // ------------------------------------------------------
+        // stepwise decrease in noise
+        // if (water_cutoff > 0.3) noise = 0.5;  
         // scaling noise based off of water concentration 
-        if (water_cutoff > 0.3) {
+        // using a simple exponential function
+        /*if (water_cutoff > 0.3) {
             double noise_xNorm = (water_cutoff - 0.3)/(water_CB-0.3);
             double noiseScale = 1.0 * exp(-10.0*noise_xNorm);
-        }
+        }*/
+        // scaling noise similar to mobility scaling
+        /*if (water_cutoff > 0.30) {
+            double xWnorm = (water_cutoff - 0.30)/(water_CB-0.30);
+            double noiseScale = 1.0 - (0+((1.0 - 0.0)/(1.0 + exp(-10.0*(xWnorm-(0.0+1.0)/2)))));
+        }*/
         c[gid] += 0.1*(noise-0.5)*dt*noiseScale;
     }
 }

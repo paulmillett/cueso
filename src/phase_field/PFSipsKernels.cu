@@ -203,6 +203,15 @@ __device__ double chiDiffuse(double water_CB, double chiPS, double chiPN, double
 	return chiPS_diff;
 }
 
+__device__ double waterDiff(double water_CB, int current_step, double dt,double chiCond)
+{
+	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
+	return water_diff;
+}
+
+
+
 /*************************************************************
 	* Compute the chemical potential using the 1st derivative
 	* of the  binary Flory-Huggins free energy of mixing with
@@ -355,7 +364,7 @@ __global__ void calculateChemPotFH(double* c,double* df, double kap, double A, d
   *******************************************************/
   
 __global__ void calculateMobility(double* c, double* Mob, double M,double mobReSize, int nx, int ny, int nz,
-											 double phiCutoff, double N,
+											 double phiCutoff,double water_CB, int current_step, double dt,double chiCond, double N,
         									 double gamma, double nu, double D0, double Mweight, double Mvolume)
 {
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -376,11 +385,17 @@ __global__ void calculateMobility(double* c, double* Mob, double M,double mobReS
             double mobScale = 1.0*exp(-10.0*xNorm); // not a step wise decrease
             M *= mobScale;
         }
+        //double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
+        // testing mobility scaling with water concentration
+        /*if (water_cutoff > 0.30) {
+            double xWnorm = (water_cutoff - 0.30)/(water_CB-0.30);
+            double waterScale = 1.0 - (0+((1.0 - 0.0)/(1.0 + exp(-10.0*(xWnorm-(0.0+1.0)/2)))));
+            M *= waterScale;
+        }*/
         M *= mobReSize;
-        Mob[gid] = M;
-     }		  
+        Mob[gid] = M;		  
+    }
 }
-
 
 /************************************************************************************
   * Computes the non-uniform mobility and chemical potential laplacian, multiplies 
@@ -426,8 +441,8 @@ __global__ void init_cuRAND(unsigned long seed,curandState *state,int nx,int ny,
 /************************************************************
   * Add random fluctuations for non-trivial solution (cuRand)
   ***********************************************************/
-__global__ void addNoise(double *c,int nx, int ny, int nz, double dt, 
-                         double phiCutoff,curandState *state)
+__global__ void addNoise(double *c,int nx, int ny, int nz, double dt, int current_step,double chiCond, 
+                         double water_CB,double phiCutoff,curandState *state)
 {
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -436,13 +451,20 @@ __global__ void addNoise(double *c,int nx, int ny, int nz, double dt,
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        
+        double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
         double noise = curand_uniform_double(&state[gid]);
         double cc = c[gid];
+        double noiseScale = 1.0;
         // add random fluctuations with euler update
         if (cc > phiCutoff) noise = 0.5; // no fluctuations for phi < 0
         else if (cc < 0.0) noise = 0.5;  // no fluctuations for phi > phiCutoff
-        c[gid] += 0.1*(noise-0.5)*dt;
+        //if (water_cutoff > /*water_CB*/0.8) noise = 0.5;
+        // scaling noise based off of water concentration 
+        if (water_cutoff > 0.3) {
+            double noise_xNorm = (water_cutoff - 0.3)/(water_CB-0.3);
+            double noiseScale = 1.0 * exp(-10.0*noise_xNorm);
+        }
+        c[gid] += 0.1*(noise-0.5)*dt*noiseScale;
     }
 }
 

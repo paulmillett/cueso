@@ -23,7 +23,7 @@ __global__ void calculateChemPotFH(double* c, double* df, double kap, double A, 
 
 
 __global__ void calculateMobility(double* c,double* Mob,double M,double mobReSize,int nx,int ny,int nz,
-											 double phiCutoff, double N,
+											 double phiCutoff, double water_CB,int current_step, double dt, double chiCond, double N,
         									 double gamma, double nu, double D0, double Mweight, double Mvolume);
 
 
@@ -34,8 +34,8 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
 __global__ void init_cuRAND(unsigned long seed, curandState* state,int nx, int ny, int nz);
 
 
-__global__ void addNoise(double* c, int nx, int ny, int nz, double dt, 
-                         double phiCutoff, curandState * state);
+__global__ void addNoise(double* c, int nx, int ny, int nz, double dt, int current_step, double chiCond,
+                         double water_CB,double phiCutoff, curandState * state);
 
 __global__ void populateCopyBufferSIPS(double* c, double* cpyBuff, int nx, int ny, int nz);
 

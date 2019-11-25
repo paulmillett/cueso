@@ -186,11 +186,8 @@ void PFSips::initSystem()
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &nonUniformLap_d,size);
     cudaCheckErrors("cudaMalloc fail");
-    // copy concentration array to device
-    cudaMemcpy(c_d,&c[0],size,cudaMemcpyHostToDevice);
-    cudaCheckErrors("cudaMemcpy H2D fail");
-    // allocate state for cuRAND
-    cudaMalloc((void**) &devState,/*nxyz*/sizeof(curandState));
+    // allocate memory for cuRAND state
+    cudaMalloc((void**) &devState,nxyz*sizeof(curandState));
     cudaCheckErrors("cudaMalloc fail");
     // copy concentration array to device
     cudaMemcpy(c_d,&c[0],size,cudaMemcpyHostToDevice);
@@ -232,14 +229,14 @@ void PFSips::computeInterval(int interval)
         cudaDeviceSynchronize();
         
         // calculate the chemical potential and store in df_d
-        calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,/*chi_d,*/kap,A,water_CB,chiCond,chiPS,chiPN,
+        calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,kap,A,water_CB,chiCond,chiPS,chiPN,
         														N,nx,ny,nz,current_step,dt);
         cudaCheckAsyncErrors("calculateChemPotFH kernel fail");
         cudaDeviceSynchronize();
         
         // calculate mobility and store it in Mob_d
-        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,mobReSize,nx,ny,nz,phiCutoff,
-        														N,gamma,nu,D0,Mweight,Mvolume);
+        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,mobReSize,nx,ny,nz,phiCutoff,water_CB,
+        								        current_step,dt,chiCond,N,gamma,nu,D0,Mweight,Mvolume);
         cudaCheckAsyncErrors("calculateMobility kernel fail");
         cudaDeviceSynchronize();
      
@@ -251,9 +248,9 @@ void PFSips::computeInterval(int interval)
         cudaDeviceSynchronize();
 
         // add thermal fluctuations of polymer concentration
-        addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, phiCutoff,devState);
-        cudaCheckAsyncErrors("addNoise kernel fail");
-        cudaDeviceSynchronize();
+       // addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, current_step, chiCond, water_CB, phiCutoff, devState);
+       // cudaCheckAsyncErrors("addNoise kernel fail");
+       // cudaDeviceSynchronize();
     }
 
     // ----------------------------------------

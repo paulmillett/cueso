@@ -44,6 +44,7 @@ class PFSips : public CuesoBase {
         double A;
         double Tbath;
         double Tinit;
+        double Tcast;
         double noiseStr;
         double nu;
         double gamma;
@@ -53,11 +54,15 @@ class PFSips : public CuesoBase {
         bool bx,by,bz;
         Rand rng;
         vector<double> c;
+        vector<double> chi;
+        vector<double> water;
         double thermFluc_d;
     
         // cuda members
         int size;
-        double * c_d;       			// concentration array
+        double * c_d;        // concentration array
+        double * w_d;
+        double * chi_d;
         double * df_d;      			// chemical potential array
         double * cpyBuff_d; 			// Copy buffer for ansynchronous data transfer
         double * Mob_d;     			// mobility

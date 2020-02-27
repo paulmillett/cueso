@@ -1,4 +1,4 @@
-/*
+ /*
  * PFSipsKernels.cpp
  * Copyright (C) 2018 Joseph Carmack <joseph.liping@gmail.com>
  *
@@ -365,7 +365,7 @@ __global__ void calculateChemPotFH(double* c,double* df, double kap, double A, d
   
 __global__ void calculateMobility(double* c, double* Mob, double M,double mobReSize, int nx, int ny, int nz,
 											 double phiCutoff,double water_CB, int current_step, double dt,double chiCond, double N,
-        									 double gamma, double nu, double D0, double Mweight, double Mvolume)
+        									 double gamma, double nu, double D0, double Mweight, double Mvolume, double Tcast)
 {
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
     int idy = blockIdx.y*blockDim.y + threadIdx.y;
@@ -377,15 +377,16 @@ __global__ void calculateMobility(double* c, double* Mob, double M,double mobReS
         double cc = c[gid];
         double FH2 = d2dc2_FH(cc,N);
         double D_phil = philliesDiffusion(cc,gamma,nu,D0,Mweight,Mvolume);
-        M = D0*D_phil/FH2;
+        double Dtemp = D0*Tcast/273.15;
+        M = Dtemp*D_phil/FH2;
         if (M > 1.0) M = 1.0;     // making mobility max = 1
         else if (M < 0.0) M = 0.001; // mobility min = 0.001
         // exponential decrease in mobility 
         // after phiCutoff has been reached
         if (cc > phiCutoff) { 
-            double xNorm = (cc - phiCutoff)/(1.0 - phiCutoff);
-            double mobScale = 1.0*exp(-10.0*xNorm); // 
-            M *= mobScale;
+        //    double xNorm = (cc - phiCutoff)/(1.0 - phiCutoff);
+        //    double mobScale = 1.0*exp(-10.0*xNorm); // 
+            M *= 1e-6;
         }
         // ---------------------------------------------------------
         // TODO 
@@ -427,6 +428,27 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
         c[gid] += nonUniformLap[gid]*dt;
     }
 }
+
+
+// for calculating water concentration and chi concentration
+__global__ void calculateWaterChi(double *w, double *chi, int nx, int ny, int nz, double water_CB, int current_step, double dt, double chiCond, double chiPN, double chiPS)
+{
+    // get unique thread id
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+            int gid = nx*ny*idz + nx*idy + idx;
+        	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+            double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
+	        w[gid] = water_diff;
+            double chiPS_diff = chiPN*water_diff + chiPS*(1.0-water_diff);
+            chi[gid] = chiPS_diff;
+    }
+}
+//(w_d,chi_d,nx,ny,nz,water_CB,current_step,dt,chiCond);
+
 
 
 /**********************************************************************

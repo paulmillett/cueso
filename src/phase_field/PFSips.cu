@@ -56,7 +56,8 @@ PFSips::PFSips(const GetPot& input_params)
     phiCutoff = input_params("PFSips/phiCutoff",0.75);
     N = input_params("PFSips/N",100.0);
     A = input_params("PFSips/A",1.0);
-    Tinit = input_params("PFSips/Tinit",298);
+    Tinit = input_params("PFSips/Tinit",298.0);
+    Tcast = input_params("PFSips/Tcast",298.0);
     noiseStr = input_params("PFSips/noiseStr",0.1);
     D0 = input_params("PFSips/D0",1.0);
     nu = input_params("PFSips/nu",1.0);
@@ -108,6 +109,10 @@ PFSips::~PFSips()
     // ----------------------------------------
 
     cudaFree(c_d);
+    // just for copyin water and chi concentrations
+    cudaFree(w_d);
+    cudaFree(chi_d);
+    
     cudaFree(df_d);
     cudaFree(cpyBuff_d);
     cudaFree(Mob_d);
@@ -168,6 +173,11 @@ void PFSips::initSystem()
         }
         xHolder = 0;
     }
+    for(size_t i=0; i<nxyz; i++)
+    {
+        chi.push_back(0.0);
+        water.push_back(0.0);
+    }
     
     // ----------------------------------------
     // Allocate memory on device and copy data
@@ -178,6 +188,12 @@ void PFSips::initSystem()
     size = nxyz*sizeof(double);
     cudaMalloc((void**) &c_d,size);
     cudaCheckErrors("cudaMalloc fail");
+    // water and chi concentrations
+    cudaMalloc((void**) &w_d,size);
+    cudaCheckErrors("cudaMalloc fail");
+    cudaMalloc((void**) &chi_d,size);
+    cudaCheckErrors("cudaMalloc fail");
+    
     cudaMalloc((void**) &df_d,size);
     cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &cpyBuff_d,size);
@@ -236,7 +252,7 @@ void PFSips::computeInterval(int interval)
         
         // calculate mobility and store it in Mob_d
         calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,mobReSize,nx,ny,nz,phiCutoff,water_CB,
-        								        current_step,dt,chiCond,N,gamma,nu,D0,Mweight,Mvolume);
+        								        current_step,dt,chiCond,N,gamma,nu,D0,Mweight,Mvolume,Tcast);
         cudaCheckAsyncErrors("calculateMobility kernel fail");
         cudaDeviceSynchronize();
      
@@ -251,6 +267,12 @@ void PFSips::computeInterval(int interval)
         addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, current_step, chiCond, water_CB, phiCutoff, devState);
         cudaCheckAsyncErrors("addNoise kernel fail");
         cudaDeviceSynchronize();
+        
+        // calculate w and chi
+        calculateWaterChi<<<blocks,blockSize>>>(w_d,chi_d,nx,ny,nz,water_CB,current_step,dt,chiCond,chiPN,chiPS);
+        cudaCheckAsyncErrors("calculateWaterChi kernel fail");
+        cudaDeviceSynchronize();
+        
     }
 
     // ----------------------------------------
@@ -261,6 +283,12 @@ void PFSips::computeInterval(int interval)
     cudaMemcpyAsync(&c[0],c_d,size,cudaMemcpyDeviceToHost);
     cudaCheckErrors("cudaMemcpyAsync D2H fail");
     
+    populateCopyBufferSIPS<<<blocks,blockSize>>>(w_d,cpyBuff_d,nx,ny,nz);
+    cudaMemcpyAsync(&water[0],w_d,size,cudaMemcpyDeviceToHost);
+    cudaCheckErrors("cudaMemcpyAsync D2H fail");
+    populateCopyBufferSIPS<<<blocks,blockSize>>>(chi_d,cpyBuff_d,nx,ny,nz);
+    cudaMemcpyAsync(&chi[0],chi_d,size,cudaMemcpyDeviceToHost);
+    cudaCheckErrors("cudaMemcpyAsync D2H fail");
 }
 
 
@@ -277,7 +305,12 @@ void PFSips::writeOutput(int step)
     // -----------------------------------
 
     ofstream outfile;
+    ofstream outfile2;
+    ofstream outfile3;
     stringstream filenamecombine;
+    stringstream filenamecombine2;
+    stringstream filenamecombine3;
+    
     filenamecombine << "vtkoutput/c_" << step << ".vtk";
     string filename = filenamecombine.str();
     outfile.open(filename.c_str(), std::ios::out);
@@ -321,7 +354,103 @@ void PFSips::writeOutput(int step)
     // -----------------------------------
 
     outfile.close();
-        
+    // vtkoutput for water
+    // -----------------------------------
+    // Define the file location and name:
+    // -----------------------------------
+
+
+    filenamecombine2 << "vtkoutput/w_" << step << ".vtk";
+    string filename2 = filenamecombine2.str();
+    outfile2.open(filename2.c_str(), std::ios::out);
+
+    // -----------------------------------
+    //	Write the 'vtk' file header:
+    // -----------------------------------
+
+    outfile2 << "# vtk DataFile Version 3.1" << endl;
+    outfile2 << "VTK file containing grid data" << endl;
+    outfile2 << "ASCII" << endl;
+    outfile2 << " " << endl;
+    outfile2 << "DATASET STRUCTURED_POINTS" << endl;
+    outfile2 << "DIMENSIONS" << d << nx << d << ny << d << nz << endl;
+    outfile2 << "ORIGIN " << d << 0 << d << 0 << d << 0 << endl;
+    outfile2 << "SPACING" << d << 1.0 << d << 1.0 << d << 1.0 << endl;
+    outfile2 << " " << endl;
+    outfile2 << "POINT_DATA " << nxyz << endl;
+    outfile2 << "SCALARS c float" << endl;
+    outfile2 << "LOOKUP_TABLE default" << endl;
+
+    // -----------------------------------
+    //	Write the data:
+    // NOTE: x-data increases fastest,
+    //       then y-data, then z-data
+    // -----------------------------------
+
+    for(size_t k=0;k<nz;k++)
+        for(size_t j=0;j<ny;j++)
+            for(size_t i=0;i<nx;i++)
+            {
+                int id = nx*ny*k + nx*j + i;
+                double point = water[id];
+                //if (point < 1e-10) point = 0.0; // making really small numbers == 0 
+                outfile2 << point << endl;
+            }
+
+    // -----------------------------------
+    //	Close the file:
+    // -----------------------------------
+
+    outfile2.close();
+    
+    
+    // write output for chi
+    // -----------------------------------
+    // Define the file location and name:
+    // -----------------------------------
+
+    filenamecombine3 << "vtkoutput/chi_" << step << ".vtk";
+    string filename3 = filenamecombine3.str();
+    outfile3.open(filename3.c_str(), std::ios::out);
+
+    // -----------------------------------
+    //	Write the 'vtk' file header:
+    // -----------------------------------
+
+    outfile3 << "# vtk DataFile Version 3.1" << endl;
+    outfile3 << "VTK file containing grid data" << endl;
+    outfile3 << "ASCII" << endl;
+    outfile3 << " " << endl;
+    outfile3 << "DATASET STRUCTURED_POINTS" << endl;
+    outfile3 << "DIMENSIONS" << d << nx << d << ny << d << nz << endl;
+    outfile3 << "ORIGIN " << d << 0 << d << 0 << d << 0 << endl;
+    outfile3 << "SPACING" << d << 1.0 << d << 1.0 << d << 1.0 << endl;
+    outfile3 << " " << endl;
+    outfile3 << "POINT_DATA " << nxyz << endl;
+    outfile3 << "SCALARS c float" << endl;
+    outfile3 << "LOOKUP_TABLE default" << endl;
+
+    // -----------------------------------
+    //	Write the data:
+    // NOTE: x-data increases fastest,
+    //       then y-data, then z-data
+    // -----------------------------------
+
+    for(size_t k=0;k<nz;k++)
+        for(size_t j=0;j<ny;j++)
+            for(size_t i=0;i<nx;i++)
+            {
+                int id = nx*ny*k + nx*j + i;
+                double point = chi[id];
+                //if (point < 1e-10) point = 0.0; // making really small numbers == 0 
+                outfile3 << point << endl;
+            }
+
+    // -----------------------------------
+    //	Close the file:
+    // -----------------------------------
+
+    outfile3.close();
 }
 
 

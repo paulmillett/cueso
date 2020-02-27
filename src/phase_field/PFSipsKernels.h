@@ -24,12 +24,14 @@ __global__ void calculateChemPotFH(double* c, double* df, double kap, double A, 
 
 __global__ void calculateMobility(double* c,double* Mob,double M,double mobReSize,int nx,int ny,int nz,
 											 double phiCutoff, double water_CB,int current_step, double dt, double chiCond, double N,
-        									 double gamma, double nu, double D0, double Mweight, double Mvolume);
+        									 double gamma, double nu, double D0, double Mweight, double Mvolume, double Tcast);
 
 
 __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double*                                                                         nonUniformLap, double M, double dt, 
 				                              int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
 
+// for calculating water concentration and chi concentration
+__global__ void calculateWaterChi(double *w, double *chi, int nx, int ny, int nz, double water_CB, int current_step, double dt, double chiCond, double chiPN, double chiPS);
 
 __global__ void init_cuRAND(unsigned long seed, curandState* state,int nx, int ny, int nz);
 

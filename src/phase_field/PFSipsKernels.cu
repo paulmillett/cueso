@@ -195,20 +195,20 @@ __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int
   * Compute diffusive interaction parameter in x-direction
   ***********************************************************/
 
-__device__ double chiDiffuse(double water_CB, double chiPS, double chiPN, double chiCond, int current_step, double dt)
+__device__ double chiDiffuse(double locWater, double chiPS, double chiPN)
 {
-	int idx = blockIdx.x*blockDim.x + threadIdx.x;
-    double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
-    double chiPS_diff = chiPN*water_diff + chiPS*(1.0-water_diff);
-	return chiPS_diff;
+	//int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    //double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
+    double chi = chiPN*locWater + chiPS*(1.0-locWater);
+	return chi;
 }
 
-__device__ double waterDiff(double water_CB, int current_step, double dt,double chiCond)
+/*__device__ double waterDiff(double water_CB, int current_step, double dt,double chiCond)
 {
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
     double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
 	return water_diff;
-}
+}*/
 
 
 
@@ -225,13 +225,13 @@ __device__ double waterDiff(double water_CB, int current_step, double dt,double 
 	*
 	***********************************************************/
 
-__device__ double freeEnergyBiFH(double cc, double chiPS_diff, double N, double lap_c, double kap, double A)
+__device__ double freeEnergyBiFH(double cc, double chi, double N, double lap_c, double kap, double A)
 {
    double c_fh = 0.0;
    if (cc < 0.0) c_fh = 0.0001;
    else if (cc > 1.0) c_fh = 0.999;
    else c_fh = cc;
-   double FH = (log(c_fh) + 1.0)/N - log(1.0-c_fh) - 1.0 + chiPS_diff*(1.0-2.0*c_fh) - kap*lap_c;
+   double FH = (log(c_fh) + 1.0)/N - log(1.0-c_fh) - 1.0 + chi*(1.0-2.0*c_fh) - kap*lap_c;
    if (cc <= 0.0) FH = -1.5*A*sqrt(-cc) - kap*lap_c;   
    return FH;
 }
@@ -311,11 +311,11 @@ __global__ void testLapNonUniformMob(double* f, double *Mob, int nx, int ny, int
 
 
 /*********************************************************
-  * Compute the laplacian of the concentration array c
-  * and store it in the device array df.
+  * Compute the laplacian of the concentration array c and w
+  * and store it in the device array df and wdf
   *******************************************************/
 
-__global__ void calculateLapBoundaries(double* c,double* df, int nx, int ny, int nz, 
+__global__ void calculateLapBoundaries(double* c,double* df,/*double* w,double* wdf,*/ int nx, int ny, int nz, 
 													double h, bool bX, bool bY, bool bZ)
 {
     // get unique thread id
@@ -337,9 +337,7 @@ __global__ void calculateLapBoundaries(double* c,double* df, int nx, int ny, int
   *******************************************************/
 
 
-__global__ void calculateChemPotFH(double* c,double* df, double kap, double A, double water_CB,
-                                   double chiCond, double chiPS, double chiPN, double N, 
-                                   int nx, int ny, int nz, int current_step, double dt)
+__global__ void calculateChemPotFH(double* c,double* w,double* df, double kap, double A, double chiPS, double chiPN, double N, int nx, int ny, int nz, int current_step, double dt)
 {
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -349,9 +347,10 @@ __global__ void calculateChemPotFH(double* c,double* df, double kap, double A, d
     {
         int gid = nx*ny*idz + nx*idy + idx;
         double cc = c[gid];
+        double ww = w[gid];
         double lap_c = df[gid];
         // compute interaction parameter
-        double chi = chiDiffuse(water_CB,chiPS,chiPN,chiCond,current_step,dt);
+        double chi = chiDiffuse(ww,chiPS,chiPN);
         // compute chemical potential
         df[gid] = freeEnergyBiFH(cc,chi,N,lap_c,kap,A); 
     }
@@ -363,8 +362,8 @@ __global__ void calculateChemPotFH(double* c,double* df, double kap, double A, d
   * parameter and stores it in the Mob_d array.
   *******************************************************/
   
-__global__ void calculateMobility(double* c, double* Mob, double M,double mobReSize, int nx, int ny, int nz,
-											 double phiCutoff,double water_CB, int current_step, double dt,double chiCond, double N,
+__global__ void calculateMobility(double* c,double* Mob, double M,double mobReSize, int nx, int ny, int nz,
+											 double phiCutoff, double N,
         									 double gamma, double nu, double D0, double Mweight, double Mvolume, double Tcast)
 {
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -381,25 +380,11 @@ __global__ void calculateMobility(double* c, double* Mob, double M,double mobReS
         M = Dtemp*D_phil/FH2;
         if (M > 1.0) M = 1.0;     // making mobility max = 1
         else if (M < 0.0) M = 0.001; // mobility min = 0.001
-        // exponential decrease in mobility 
-        // after phiCutoff has been reached
+        // Using phiCutoff as vitrification
         if (cc > phiCutoff) { 
-        //    double xNorm = (cc - phiCutoff)/(1.0 - phiCutoff);
-        //    double mobScale = 1.0*exp(-10.0*xNorm); // 
             M *= 1e-6;
         }
-        // ---------------------------------------------------------
-        // TODO 
-        // scaling mobility based on water concentration
-        // use lower diffusion instead...?
-        // ---------------------------------------------------------
-        // testing mobility scaling with water concentration
-        //double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
-        /*if (water_cutoff > 0.30) {
-            double xWnorm = (water_cutoff - 0.30)/(water_CB-0.30);
-            double waterScale = 1.0 - (0+((1.0 - 0.0)/(1.0 + exp(-10.0*(xWnorm-(0.0+1.0)/2)))));
-            M *= waterScale;
-        }*/
+        // resize mobility to be similar to experiments
         M *= mobReSize;
         Mob[gid] = M;		  
     }
@@ -411,9 +396,7 @@ __global__ void calculateMobility(double* c, double* Mob, double M,double mobReS
   * to perform an Euler update of the concentration in time.
   ***********************************************************************************/
 
-__global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double* nonUniformLap,
-                                              double M, double dt, int nx, int ny, int nz, double h, 
-                                              bool bX, bool bY, bool bZ)
+__global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double* nonUniformLap, double dt, int nx, int ny, int nz, double h,bool bX, bool bY, bool bZ)
 {
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -424,14 +407,38 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
         int gid = nx*ny*idz + nx*idy + idx;
         // compute chemical potential laplacain with non-uniform mobility
         // and user defined boundaries (no-flux or PBCs)
-        nonUniformLap[gid] = laplacianNonUniformMob(df,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);    
+        nonUniformLap[gid] = laplacianNonUniformMob(df,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
         c[gid] += nonUniformLap[gid]*dt;
-    }
+    } 
 }
 
-
+/*__global__ void diffuseWater(double* w,double* wdf,int nx,int ny,int nz,double h,bool bX,bool bY,bool bZ)
+{
+    // get unique thread id
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        wdf[gid] = laplacianUpdateBoundaries(w,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
+    }   
+}*/
+__global__ void updateWater(double* w,double* wdf,double water_CB,double Dw,double dt,int nx,int ny,int nz)
+{
+        // get unique thread id
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        if (idx == 0) w[gid] = water_CB;
+        else w[gid] += Dw*wdf[gid]*dt;   
+    }
+}
 // for calculating water concentration and chi concentration
-__global__ void calculateWaterChi(double *w, double *chi, int nx, int ny, int nz, double water_CB, int current_step, double dt, double chiCond, double chiPN, double chiPS)
+/*__global__ void calculateWaterChi(double *w, double *chi, int nx, int ny, int nz, double water_CB, int current_step, double dt, double chiCond, double chiPN, double chiPS)
 {
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -446,7 +453,7 @@ __global__ void calculateWaterChi(double *w, double *chi, int nx, int ny, int nz
             double chiPS_diff = chiPN*water_diff + chiPS*(1.0-water_diff);
             chi[gid] = chiPS_diff;
     }
-}
+}*/
 //(w_d,chi_d,nx,ny,nz,water_CB,current_step,dt,chiCond);
 
 
@@ -480,7 +487,7 @@ __global__ void addNoise(double *c,int nx, int ny, int nz, double dt, int curren
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
+        // double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
         double noise = curand_uniform_double(&state[gid]);
         double cc = c[gid];
         double noiseScale = 1.0;

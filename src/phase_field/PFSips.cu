@@ -112,7 +112,7 @@ PFSips::~PFSips()
     cudaFree(c_d);
     // just for copyin water and chi concentrations
     cudaFree(w_d);
-    //cudaFree(wdf_d);
+    cudaFree(muNS_d);
     // cudaFree(chi_d);
     cudaFree(df_d);
     cudaFree(cpyBuff_d);
@@ -203,6 +203,8 @@ void PFSips::initSystem()
     cudaCheckErrors("cudaMalloc fail");
     // cudaMalloc((void**) &wdf_d,size);
     // cudaCheckErrors("cudaMalloc fail");
+    cudaMalloc((void**) &muNS_d,size);
+    cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &cpyBuff_d,size);
     cudaCheckErrors("cudaMalloc fail");
     // allocate mobility
@@ -273,9 +275,10 @@ void PFSips::computeInterval(int interval)
         cudaDeviceSynchronize();
         
         // calculate laplacian for diffusing water
-        calculateLapBoundaries<<<blocks,blockSize>>>(w_d,df_d,nx,ny,nz,dx,bx,by,bz);
+        calculateLapBoundaries_NS<<<blocks,blockSize>>>(w_d,df_d,c_d,muNS_d,nx,ny,nz,dx,bx,by,bz);
         cudaCheckAsyncErrors('calculateLap water kernel fail');    
         cudaDeviceSynchronize();
+        //__global__ void calculateLapBoundaries_NS(double* w,double* df,double* c, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
         
         // euler update water diffusing
         updateWater<<<blocks,blockSize>>>(w_d,df_d,water_CB,Dw,dt,nx,ny,nz);

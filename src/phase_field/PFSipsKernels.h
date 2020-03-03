@@ -29,6 +29,8 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
 // for calculating water diffusing...
 /*__global__ void diffuseWater(double* w,double* wdf_d,int nx,int ny,int nz,double h,bool bX,bool bY,bool bZ);*/
 
+__global__ void calculateLapBoundaries_NS(double* w,double* df,double* c, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
+
 __global__ void updateWater(double* w,double* wdf,double water_CB,double Dw,double dt,int nx,int ny,int nz);
 // for calculating water concentration and chi concentration
 //__global__ void calculateWaterChi(double *w, double *chi, int nx, int ny, int nz, double water_CB, int current_step, double dt, double chiCond, double chiPN, double chiPS);

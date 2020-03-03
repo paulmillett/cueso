@@ -331,6 +331,7 @@ __global__ void calculateLapBoundaries(double* c,double* df,/*double* w,double* 
 
 
 
+
 /*********************************************************
   * Computes the chemical potential of a concentration
   * order parameter and stores it in the df_d array.
@@ -424,6 +425,22 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
         wdf[gid] = laplacianUpdateBoundaries(w,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
     }   
 }*/
+
+
+__global__ void calculateLapBoundaries_NS(double* w,double* df,double* c, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ)
+{
+    // get unique thread id
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        muNS[gid] = (1 + c[gid]) * w[gid];
+        df[gid] = laplacianUpdateBoundaries(muNS,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
+    }
+}
+
 __global__ void updateWater(double* w,double* wdf,double water_CB,double Dw,double dt,int nx,int ny,int nz)
 {
         // get unique thread id

@@ -113,7 +113,8 @@ PFSips::~PFSips()
     // just for copyin water and chi concentrations
     cudaFree(w_d);
     cudaFree(muNS_d);
-    // cudaFree(chi_d);
+    // cudaFree(Dw_d);  // using Mob array for Dw_d
+    // cudaFree(chi_d); // safe to remove
     cudaFree(df_d);
     cudaFree(cpyBuff_d);
     cudaFree(Mob_d);
@@ -134,13 +135,19 @@ void PFSips::initSystem()
     // Initialize concentration fields:
     // ----------------------------------------
 	 srand(time(NULL));      // setting the seed  
-	 // random initialization
-    int xHolder = 0;
-    int zone1 = r1*(nx-NS_depth); 
-    int zone2 = r2*(nx-NS_depth);
-    int zone3 = nx - zone1 - zone2 - NS_depth; 
+    // random initialization
+    // int xHolder = 0;
+    // int zone1 = r1*(nx-NS_depth); 
+    // int zone2 = r2*(nx-NS_depth);
+    // int zone3 = nx - zone1 - zone2 - NS_depth;
+    double r = 0.0;
     for(size_t i=0;i<nxyz;i++) {
-        double r = (double)rand()/RAND_MAX;
+        r = (double)rand()/RAND_MAX;
+        // initialize polymer phase
+        c.push_back(co + 0.1*(r-0.5));
+        // initialize nonsolvent phase
+        water.push_back(0.000001);
+        /*double r = (double)rand()/RAND_MAX;
         // create NonSolvent layer
         while (xHolder < NS_depth) 
         { 
@@ -175,16 +182,9 @@ void PFSips::initSystem()
             water.push_back(0.0);
             xHolder++;
         }
-        xHolder = 0;
+        xHolder = 0;*/
     }
-    
-    // initializing water and chi arrays for printout
-    /*for(size_t i=0; i<nxyz; i++)
-    {
-        //chi.push_back(0.0);
-        //water.push_back(0.0);
-    }*/
-    
+
     // ----------------------------------------
     // Allocate memory on device and copy data
     // and copy data from host to device
@@ -201,16 +201,21 @@ void PFSips::initSystem()
     // allocate water concentration
     cudaMalloc((void**) &w_d,size);
     cudaCheckErrors("cudaMalloc fail");
+    // allocate Water Diffusion coefficient
+    //cudaMalloc((void**) &Dw_d,size);
+    //cudaCheckErrors("cudaMalloc fail");
     // cudaMalloc((void**) &wdf_d,size);
     // cudaCheckErrors("cudaMalloc fail");
     cudaMalloc((void**) &muNS_d,size);
     cudaCheckErrors("cudaMalloc fail");
+    // copy buffer
     cudaMalloc((void**) &cpyBuff_d,size);
     cudaCheckErrors("cudaMalloc fail");
     // allocate mobility
     cudaMalloc((void**) &Mob_d,size);
     cudaCheckErrors("cudaMalloc fail");
-    // allocate nonuniform laplacian for mobility
+    // allocate nonuniform laplacian for mobility 
+    // and water diffusion coefficient
     cudaMalloc((void**) &nonUniformLap_d,size);
     cudaCheckErrors("cudaMalloc fail");
     // allocate memory for cuRAND state
@@ -274,19 +279,25 @@ void PFSips::computeInterval(int interval)
         cudaCheckAsyncErrors("lapChemPotAndUpdateBoundaries kernel fail");
         cudaDeviceSynchronize();
         
+        // calculate mu for Nonsolvent diffusion
+        calculate_muNS<<<blocks,blockSize>>>(w_d,c_d,muNS_d,Mob_d,Dw,water_CB,nx,ny,nz);
+        cudaCheckAsyncErrors('calculate muNS kernel fail');
+        cudaDeviceSynchronize();
+        
         // calculate laplacian for diffusing water
-        calculateLapBoundaries_NS<<<blocks,blockSize>>>(w_d,df_d,c_d,muNS_d,nx,ny,nz,dx,bx,by,bz);
+        calculateLapBoundaries_muNS<<<blocks,blockSize>>>(df_d,muNS_d,nx,ny,nz,dx,bx,by,bz);
         cudaCheckAsyncErrors('calculateLap water kernel fail');    
         cudaDeviceSynchronize();
-        //__global__ void calculateLapBoundaries_NS(double* w,double* df,double* c, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
+        
+        // calculate nonuniform laplacian for diffusion
+        calculateNonUniformLapBoundaries_muNS<<<blocks,blockSize>>>(muNS_d,Mob_d,nonUniformLap_d,nx,ny,nz,dx,bx,by,bz);
+        cudaCheckAsyncErrors('calculateNonUniformLap muNS kernel fail');
+        cudaDeviceSynchronize();
         
         // euler update water diffusing
-        updateWater<<<blocks,blockSize>>>(w_d,df_d,water_CB,Dw,dt,nx,ny,nz);
+        update_water<<<blocks,blockSize>>>(w_d,df_d,Mob_d,nonUniformLap_d,dt,nx,ny,nz,dx,bx,by,bz);
         cudaCheckAsyncErrors("updateWater kernel fail");
         cudaDeviceSynchronize();
-        // TODO 
-        // need to update w_d with an euler update...
-        
         
         // add thermal fluctuations of polymer concentration
         addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, current_step, chiCond, water_CB, phiCutoff, devState);
@@ -407,7 +418,7 @@ void PFSips::writeOutput(int step)
     outfile2 << "SPACING" << d << 1.0 << d << 1.0 << d << 1.0 << endl;
     outfile2 << " " << endl;
     outfile2 << "POINT_DATA " << nxyz << endl;
-    outfile2 << "SCALARS c float" << endl;
+    outfile2 << "SCALARS w float" << endl;
     outfile2 << "LOOKUP_TABLE default" << endl;
 
     // -----------------------------------

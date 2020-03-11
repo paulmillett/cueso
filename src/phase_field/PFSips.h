@@ -66,6 +66,7 @@ class PFSips : public CuesoBase {
         double * df_d;       
         double * w_d;
         double * muNS_d;
+        //double * Dw_d;   // using Mob_d for Dw_d
         //double * chi_d;
    			// chemical potential array
         double * cpyBuff_d; 			// Copy buffer for ansynchronous data transfer

@@ -409,6 +409,7 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
         // compute chemical potential laplacain with non-uniform mobility
         // and user defined boundaries (no-flux or PBCs)
         nonUniformLap[gid] = laplacianNonUniformMob(df,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
+        //__syncthreads();
         c[gid] += nonUniformLap[gid]*dt;
     } 
 }
@@ -427,7 +428,7 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
 }*/
 
 
-__global__ void calculateLapBoundaries_NS(double* w,double* df,double* c, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ)
+__global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, double Dw, double water_CB, int nx, int ny, int nz)
 {
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -436,22 +437,69 @@ __global__ void calculateLapBoundaries_NS(double* w,double* df,double* c, double
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        muNS[gid] = (1 + c[gid]) * w[gid];
-        df[gid] = laplacianUpdateBoundaries(muNS,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
+        // calculate mu for NonSolvent and take laplacian
+        
+        // make x = 0 coagulation bath composition
+        if (idx == 0) w[gid] = water_CB;
+        double ww = w[gid];
+        // check that polymer < 1.0 and greater than 0.0
+        double cc = c[gid];
+        if (cc < 0.0) cc = 0.0;
+        else if (cc > 1.0) cc = 1.0;
+        
+        // assign muNS
+        muNS[gid] = (1.0 + cc) * ww;
+        
+        // find Diffusion coefficient for water 
+        // first trying a linear relationship
+        // note we're re-using the Mob array
+        Mob[gid] = Dw * (1.0 - cc);
+        if (Mob[gid] < 0.0) Mob[gid] = 0.0;
     }
+    
 }
 
-__global__ void updateWater(double* w,double* wdf,double water_CB,double Dw,double dt,int nx,int ny,int nz)
+__global__ void calculateLapBoundaries_muNS(double* df, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ)
 {
-        // get unique thread id
+    // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
     int idy = blockIdx.y*blockDim.y + threadIdx.y;
     int idz = blockIdx.z*blockDim.z + threadIdx.z;
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        if (idx == 0) w[gid] = water_CB;
-        else w[gid] += Dw*wdf[gid]*dt;   
+        df[gid] = laplacianUpdateBoundaries(muNS,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
+    }
+}
+
+__global__ void calculateNonUniformLapBoundaries_muNS(double* muNS, double* Mob,double* nonUniformLap, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ)
+{
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        nonUniformLap[gid] = laplacianNonUniformMob(muNS,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
+    }
+}
+
+__global__ void update_water(double* w,double* df, double* Mob, double* nonUniformLap, double dt, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ)
+{
+    // here we're re-using the Mob array for Dw_nonUniform
+    // get unique thread id
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        //nonUniformLap[gid] = laplacianNonUniformMob(df,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
+        // is this syncthreads necessary?
+        //__syncthreads();
+        //if (idx == 0) w[gid] = water_CB;
+        //w[gid] += 10.0*df[gid]*dt;
+       w[gid] += nonUniformLap[gid]*dt;
     }
 }
 // for calculating water concentration and chi concentration

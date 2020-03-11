@@ -26,12 +26,17 @@ double phiCutoff, double N, double gamma, double nu, double D0, double Mweight, 
 
 __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double* nonUniformLap, double dt, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
 
-// for calculating water diffusing...
-/*__global__ void diffuseWater(double* w,double* wdf_d,int nx,int ny,int nz,double h,bool bX,bool bY,bool bZ);*/
+// kernel for evolving water field using Fick's 2nd law...
 
-__global__ void calculateLapBoundaries_NS(double* w,double* df,double* c, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
+__global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, double Dw, double water_CB, int nx, int ny, int nz);
 
-__global__ void updateWater(double* w,double* wdf,double water_CB,double Dw,double dt,int nx,int ny,int nz);
+__global__ void calculateLapBoundaries_muNS(double* df, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
+
+__global__ void calculateNonUniformLapBoundaries_muNS(double* muNS, double* Mob,double* nonUniformLap, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
+
+__global__ void update_water(double* w,double* df, double* Mob, double* nonUniformLap, double dt, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
+
+
 // for calculating water concentration and chi concentration
 //__global__ void calculateWaterChi(double *w, double *chi, int nx, int ny, int nz, double water_CB, int current_step, double dt, double chiCond, double chiPN, double chiPS);
 

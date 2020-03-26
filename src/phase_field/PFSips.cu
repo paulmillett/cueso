@@ -62,7 +62,9 @@ PFSips::PFSips(const GetPot& input_params)
     D0 = input_params("PFSips/D0",1.0);
     Dw = input_params("PFSips/Dw",1.0);
     nu = input_params("PFSips/nu",1.0);
+    nuDw = input_params("PFSips/nuDw",1.0);
     gamma = input_params("PFSips/gamma",1.0);
+    gammaDw = input_params("PFSips/gammaDw",1.0);
     Mweight = input_params("PFSips/Mweight",100.0);
     Mvolume = input_params("PFSips/Mvolume",0.1);
     numOutputs = input_params("Output/numOutputs",1);
@@ -280,7 +282,7 @@ void PFSips::computeInterval(int interval)
         cudaDeviceSynchronize();
         
         // calculate mu for Nonsolvent diffusion
-        calculate_muNS<<<blocks,blockSize>>>(w_d,c_d,muNS_d,Mob_d,Dw,water_CB,nx,ny,nz);
+        calculate_muNS<<<blocks,blockSize>>>(w_d,c_d,muNS_d,Mob_d,Dw,water_CB,gammaDw,nuDw,Mweight,Mvolume,nx,ny,nz);
         cudaCheckAsyncErrors('calculate muNS kernel fail');
         cudaDeviceSynchronize();
         

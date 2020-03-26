@@ -28,7 +28,7 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
 
 // kernel for evolving water field using Fick's 2nd law...
 
-__global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, double Dw, double water_CB, int nx, int ny, int nz);
+__global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, double Dw, double water_CB,double gamma, double nu, double Mweight, double Mvolume, int nx, int ny, int nz);
 
 __global__ void calculateLapBoundaries_muNS(double* df, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
 

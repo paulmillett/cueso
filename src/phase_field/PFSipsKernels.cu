@@ -428,7 +428,7 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
 }*/
 
 
-__global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, double Dw, double water_CB, int nx, int ny, int nz)
+__global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, double Dw, double water_CB, double gamma, double nu, double Mweight, double Mvolume, int nx, int ny, int nz)
 {
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -452,8 +452,11 @@ __global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, do
         
         // find Diffusion coefficient for water 
         // first trying a linear relationship
+        // then we'll try with phillies method
         // note we're re-using the Mob array
-        Mob[gid] = Dw * (1.0 - cc);
+        double D_NS_phil = philliesDiffusion(cc,gamma,nu,Dw,Mweight,Mvolume);
+        Mob[gid] = D_NS_phil;
+        //Mob[gid] = Dw * (1.0 - cc);
         if (Mob[gid] < 0.0) Mob[gid] = 0.0;
     }
     

@@ -47,7 +47,9 @@ class PFSips : public CuesoBase {
         double Tcast;
         double noiseStr;
         double nu;
+        double nuDw;
         double gamma;
+        double gammaDw;
         double D0;
         double Dw;
         double Mweight;

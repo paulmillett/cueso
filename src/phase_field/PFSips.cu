@@ -148,7 +148,7 @@ void PFSips::initSystem()
         // initialize polymer phase
         c.push_back(co + 0.1*(r-0.5));
         // initialize nonsolvent phase
-        water.push_back(0.000001);
+        water.push_back(0.0);
         /*double r = (double)rand()/RAND_MAX;
         // create NonSolvent layer
         while (xHolder < NS_depth) 
@@ -263,7 +263,6 @@ void PFSips::computeInterval(int interval)
         calculateLapBoundaries<<<blocks,blockSize>>>(c_d,df_d,nx,ny,nz,dx,bx,by,bz); 
         cudaCheckAsyncErrors("calculateLap polymer kernel fail");
         cudaDeviceSynchronize();
-        // TODO
         
         // calculate the chemical potential and store in df_d
         calculateChemPotFH<<<blocks,blockSize>>>(c_d,w_d,df_d,kap,A,chiPS,chiPN,N,nx,ny,nz,current_step,dt);
@@ -435,7 +434,8 @@ void PFSips::writeOutput(int step)
             {
                 int id = nx*ny*k + nx*j + i;
                 double point = water[id];
-                //if (point < 1e-10) point = 0.0; // making really small numbers == 0 
+                // for paraview
+                if (point < 1e-30) point = 0.0; // making really small numbers == 0 
                 outfile2 << point << endl;
             }
 

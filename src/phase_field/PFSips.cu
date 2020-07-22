@@ -44,6 +44,7 @@ PFSips::PFSips(const GetPot& input_params)
     r1 = input_params("PFSips/r1",1.0);
     r2 = input_params("PFSips/r2",0.0);
     NS_depth = input_params("PFSips/NS_depth",10);
+    NS_in_dope = input_params("PFSips/NS_in_dope",0.0);
     M = input_params("PFSips/M",1.0);
     mobReSize = input_params("PFSips/mobReSize",0.35);
     kap = input_params("PFSips/kap",1.0);
@@ -67,6 +68,8 @@ PFSips::PFSips(const GetPot& input_params)
     gammaDw = input_params("PFSips/gammaDw",1.0);
     Mweight = input_params("PFSips/Mweight",100.0);
     Mvolume = input_params("PFSips/Mvolume",0.1);
+    M_w_NS = input_params("PFSips/M_w_NS",100.0);
+    M_v_NS = input_params("PFSips/M_v_NS",0.1);
     numOutputs = input_params("Output/numOutputs",1);
     outInterval = numSteps/numOutputs;
     // ---------------------------------------
@@ -148,7 +151,7 @@ void PFSips::initSystem()
         // initialize polymer phase
         c.push_back(co + 0.1*(r-0.5));
         // initialize nonsolvent phase
-        water.push_back(0.0);
+        water.push_back(NS_in_dope);
         /*double r = (double)rand()/RAND_MAX;
         // create NonSolvent layer
         while (xHolder < NS_depth) 

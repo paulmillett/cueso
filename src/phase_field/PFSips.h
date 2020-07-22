@@ -32,6 +32,7 @@ class PFSips : public CuesoBase {
         double dx,dy,dz;
         double water_CB;
         int NS_depth;
+        double  NS_in_dope;
         double chiCond;
         double phiCutoff;
         double chiPS;
@@ -54,6 +55,8 @@ class PFSips : public CuesoBase {
         double Dw;
         double Mweight;
         double Mvolume;
+        double M_w_NS;
+        double M_v_NS;
         bool bx,by,bz;
         Rand rng;
         vector<double> c;

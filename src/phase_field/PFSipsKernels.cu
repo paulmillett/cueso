@@ -448,7 +448,7 @@ __global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, do
         else if (cc > 1.0) cc = 1.0;
         
         // assign muNS
-        muNS[gid] = (1.0 + cc) * ww;
+        muNS[gid] = /* (1.0 + cc) * */ ww;
         
         // find Diffusion coefficient for water 
         // first trying a linear relationship

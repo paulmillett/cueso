@@ -13,7 +13,7 @@
 // kernel for evolving c-field using finite difference to solve
 // the Cahn-Hilliard equation
 
-__global__ void calculateLapBoundaries(double* c, double* df,/*double* w,double* wdf,*/ int nx, int ny, int nz, 
+__global__ void calculateLapBoundaries(double* c, double* df,int nx, int ny, int nz, 
 								       double h, bool bX, bool bY, bool bZ);
 
 
@@ -36,14 +36,10 @@ __global__ void calculateNonUniformLapBoundaries_muNS(double* muNS, double* Mob,
 
 __global__ void update_water(double* w,double* df, double* Mob, double* nonUniformLap, double dt, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ);
 
-
-// for calculating water concentration and chi concentration
-//__global__ void calculateWaterChi(double *w, double *chi, int nx, int ny, int nz, double water_CB, int current_step, double dt, double chiCond, double chiPN, double chiPS);
-
 __global__ void init_cuRAND(unsigned long seed, curandState* state,int nx, int ny, int nz);
 
 
-__global__ void addNoise(double* c, int nx, int ny, int nz, double dt, int current_step, double chiCond,
+__global__ void addNoise(double* c, int nx, int ny, int nz, double dt, int current_step,
                          double water_CB,double phiCutoff, curandState * state);
 
 __global__ void populateCopyBufferSIPS(double* c, double* cpyBuff, int nx, int ny, int nz);

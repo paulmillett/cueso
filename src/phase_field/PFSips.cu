@@ -39,21 +39,14 @@ PFSips::PFSips(const GetPot& input_params)
     bz = input_params("PFSips/bz",1);
     numSteps = input_params("Time/nstep",1);
     co = input_params("PFSips/co",0.20);
-    c2 = input_params("PFSips/c2",0.20);
-    c3 = input_params("PFSips/c3",0.20);
-    r1 = input_params("PFSips/r1",1.0);
-    r2 = input_params("PFSips/r2",0.0);
-    NS_depth = input_params("PFSips/NS_depth",10);
-    NS_in_dope = input_params("PFSips/NS_in_dope",0.0);
     M = input_params("PFSips/M",1.0);
     mobReSize = input_params("PFSips/mobReSize",0.35);
     kap = input_params("PFSips/kap",1.0);
     water_CB = input_params("PFSips/water_CB",1.0);
+    NS_in_dope = input_params("PFSips/NS_in_dope",0.0);
     mobReSize = input_params("PFSips/mobReSize",0.35);
     chiPS = input_params("PFSips/chiPS",0.034);
     chiPN = input_params("PFSips/chiPN",1.5);
-    chiCond = input_params("PFSips/chiCond",0);
-    chiFreeze = input_params("PFSips/chiFreeze",1.75);
     phiCutoff = input_params("PFSips/phiCutoff",0.75);
     N = input_params("PFSips/N",100.0);
     A = input_params("PFSips/A",1.0);
@@ -68,8 +61,6 @@ PFSips::PFSips(const GetPot& input_params)
     gammaDw = input_params("PFSips/gammaDw",1.0);
     Mweight = input_params("PFSips/Mweight",100.0);
     Mvolume = input_params("PFSips/Mvolume",0.1);
-    M_w_NS = input_params("PFSips/M_w_NS",100.0);
-    M_v_NS = input_params("PFSips/M_v_NS",0.1);
     numOutputs = input_params("Output/numOutputs",1);
     outInterval = numSteps/numOutputs;
     // ---------------------------------------
@@ -115,15 +106,12 @@ PFSips::~PFSips()
     // ----------------------------------------
 
     cudaFree(c_d);
-    // just for copyin water and chi concentrations
+    cudaFree(df_d);
+    cudaFree(Mob_d);
     cudaFree(w_d);
     cudaFree(muNS_d);
-    // cudaFree(Dw_d);  // using Mob array for Dw_d
-    // cudaFree(chi_d); // safe to remove
-    cudaFree(df_d);
-    cudaFree(cpyBuff_d);
-    cudaFree(Mob_d);
     cudaFree(nonUniformLap_d);
+    cudaFree(cpyBuff_d);
     cudaFree(devState);
 }
 
@@ -139,12 +127,7 @@ void PFSips::initSystem()
     // ----------------------------------------
     // Initialize concentration fields:
     // ----------------------------------------
-	 srand(time(NULL));      // setting the seed  
-    // random initialization
-    // int xHolder = 0;
-    // int zone1 = r1*(nx-NS_depth); 
-    // int zone2 = r2*(nx-NS_depth);
-    // int zone3 = nx - zone1 - zone2 - NS_depth;
+    srand(time(NULL));      // setting the seed  
     double r = 0.0;
     for(size_t i=0;i<nxyz;i++) {
         r = (double)rand()/RAND_MAX;
@@ -152,42 +135,6 @@ void PFSips::initSystem()
         c.push_back(co + 0.1*(r-0.5));
         // initialize nonsolvent phase
         water.push_back(NS_in_dope);
-        /*double r = (double)rand()/RAND_MAX;
-        // create NonSolvent layer
-        while (xHolder < NS_depth) 
-        { 
-            water.push_back(water_CB);
-            c.push_back(0.0);
-            xHolder++;
-        }
-        xHolder = 0;
-        // initialize first polymer layer
-        while (xHolder < zone1) 
-        {
-            r = (double)rand()/RAND_MAX; 
-            c.push_back(co + 0.1*(r-0.5)); 
-            water.push_back(0.0);
-            xHolder++;
-        }
-        xHolder = 0;
-        // initialize second polymer layer
-        while (xHolder < zone2) 
-        {
-            r = (double)rand()/RAND_MAX; 
-            c.push_back(c2 + 0.1*(r-0.5));
-            water.push_back(0.0);
-            xHolder++;
-        }
-        xHolder = 0;
-        // initialize third polymer layer
-        while (xHolder < zone3) 
-        {
-            r = (double)rand()/RAND_MAX; 
-            c.push_back(c3 + 0.1*(r-0.5));
-            water.push_back(0.0);
-            xHolder++;
-        }
-        xHolder = 0;*/
     }
 
     // ----------------------------------------
@@ -206,11 +153,7 @@ void PFSips::initSystem()
     // allocate water concentration
     cudaMalloc((void**) &w_d,size);
     cudaCheckErrors("cudaMalloc fail");
-    // allocate Water Diffusion coefficient
-    //cudaMalloc((void**) &Dw_d,size);
-    //cudaCheckErrors("cudaMalloc fail");
-    // cudaMalloc((void**) &wdf_d,size);
-    // cudaCheckErrors("cudaMalloc fail");
+    // allocate space for laplacian
     cudaMalloc((void**) &muNS_d,size);
     cudaCheckErrors("cudaMalloc fail");
     // copy buffer
@@ -304,15 +247,9 @@ void PFSips::computeInterval(int interval)
         cudaDeviceSynchronize();
         
         // add thermal fluctuations of polymer concentration
-        addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, current_step, chiCond, water_CB, phiCutoff, devState);
+        addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, current_step, water_CB, phiCutoff, devState);
         cudaCheckAsyncErrors("addNoise kernel fail");
-        cudaDeviceSynchronize();
-        
-        // calculate w and chi
-        //calculateWaterChi<<<blocks,blockSize>>>(w_d,chi_d,nx,ny,nz,water_CB,current_step,dt,chiCond,chiPN,chiPS);
-        //cudaCheckAsyncErrors("calculateWaterChi kernel fail");
-        //cudaDeviceSynchronize();
-        
+        cudaDeviceSynchronize(); 
     }
 
     // ----------------------------------------
@@ -329,10 +266,6 @@ void PFSips::computeInterval(int interval)
     cudaMemcpyAsync(&water[0],w_d,size,cudaMemcpyDeviceToHost);
     cudaCheckErrors("cudaMemcpyAsync D2H fail");
     cudaDeviceSynchronize();
-    // interaction parameter concentration
-    //populateCopyBufferSIPS<<<blocks,blockSize>>>(chi_d,cpyBuff_d,nx,ny,nz);
-    //cudaMemcpyAsync(&chi[0],chi_d,size,cudaMemcpyDeviceToHost);
-    //cudaCheckErrors("cudaMemcpyAsync D2H fail");
 }
 
 
@@ -350,10 +283,8 @@ void PFSips::writeOutput(int step)
 
     ofstream outfile;
     ofstream outfile2;
-    ofstream outfile3;
     stringstream filenamecombine;
     stringstream filenamecombine2;
-    stringstream filenamecombine3;
     
     filenamecombine << "vtkoutput/c_" << step << ".vtk";
     string filename = filenamecombine.str();
@@ -448,54 +379,6 @@ void PFSips::writeOutput(int step)
 
     outfile2.close();
     
-    
-    // write output for chi
-    // -----------------------------------
-    // Define the file location and name:
-    // -----------------------------------
-
-    /*filenamecombine3 << "vtkoutput/chi_" << step << ".vtk";
-    string filename3 = filenamecombine3.str();
-    outfile3.open(filename3.c_str(), std::ios::out);
-
-    // -----------------------------------
-    //	Write the 'vtk' file header:
-    // -----------------------------------
-
-    outfile3 << "# vtk DataFile Version 3.1" << endl;
-    outfile3 << "VTK file containing grid data" << endl;
-    outfile3 << "ASCII" << endl;
-    outfile3 << " " << endl;
-    outfile3 << "DATASET STRUCTURED_POINTS" << endl;
-    outfile3 << "DIMENSIONS" << d << nx << d << ny << d << nz << endl;
-    outfile3 << "ORIGIN " << d << 0 << d << 0 << d << 0 << endl;
-    outfile3 << "SPACING" << d << 1.0 << d << 1.0 << d << 1.0 << endl;
-    outfile3 << " " << endl;
-    outfile3 << "POINT_DATA " << nxyz << endl;
-    outfile3 << "SCALARS c float" << endl;
-    outfile3 << "LOOKUP_TABLE default" << endl;
-
-    // -----------------------------------
-    //	Write the data:
-    // NOTE: x-data increases fastest,
-    //       then y-data, then z-data
-    // -----------------------------------
-
-    for(size_t k=0;k<nz;k++)
-        for(size_t j=0;j<ny;j++)
-            for(size_t i=0;i<nx;i++)
-            {
-                int id = nx*ny*k + nx*j + i;
-                double point = chi[id];
-                //if (point < 1e-10) point = 0.0; // making really small numbers == 0 
-                outfile3 << point << endl;
-            }
-
-    // -----------------------------------
-    //	Close the file:
-    // -----------------------------------
-
-    outfile3.close();*/
 }
 
 

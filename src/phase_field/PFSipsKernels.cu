@@ -192,24 +192,14 @@ __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int
 
 
 /*************************************************************
-  * Compute diffusive interaction parameter in x-direction
+  * compute chi with linear weighted average
   ***********************************************************/
 
 __device__ double chiDiffuse(double locWater, double chiPS, double chiPN)
 {
-	//int idx = blockIdx.x*blockDim.x + threadIdx.x;
-    //double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
     double chi = chiPN*locWater + chiPS*(1.0-locWater);
 	return chi;
 }
-
-/*__device__ double waterDiff(double water_CB, int current_step, double dt,double chiCond)
-{
-	int idx = blockIdx.x*blockDim.x + threadIdx.x;
-    double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
-	return water_diff;
-}*/
-
 
 
 /*************************************************************
@@ -315,7 +305,7 @@ __global__ void testLapNonUniformMob(double* f, double *Mob, int nx, int ny, int
   * and store it in the device array df and wdf
   *******************************************************/
 
-__global__ void calculateLapBoundaries(double* c,double* df,/*double* w,double* wdf,*/ int nx, int ny, int nz, 
+__global__ void calculateLapBoundaries(double* c,double* df, int nx, int ny, int nz, 
 													double h, bool bX, bool bY, bool bZ)
 {
     // get unique thread id
@@ -409,23 +399,10 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
         // compute chemical potential laplacain with non-uniform mobility
         // and user defined boundaries (no-flux or PBCs)
         nonUniformLap[gid] = laplacianNonUniformMob(df,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
-        //__syncthreads();
         c[gid] += nonUniformLap[gid]*dt;
     } 
 }
 
-/*__global__ void diffuseWater(double* w,double* wdf,int nx,int ny,int nz,double h,bool bX,bool bY,bool bZ)
-{
-    // get unique thread id
-    int idx = blockIdx.x*blockDim.x + threadIdx.x;
-    int idy = blockIdx.y*blockDim.y + threadIdx.y;
-    int idz = blockIdx.z*blockDim.z + threadIdx.z;
-    if (idx<nx && idy<ny && idz<nz)
-    {
-        int gid = nx*ny*idz + nx*idy + idx;
-        wdf[gid] = laplacianUpdateBoundaries(w,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
-    }   
-}*/
 
 
 __global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, double Dw, double water_CB, double gamma, double nu, double Mweight, double Mvolume, int nx, int ny, int nz)
@@ -437,8 +414,8 @@ __global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, do
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        // calculate mu for NonSolvent and take laplacian
         
+        // calculate mu for NonSolvent NS diffusion
         // make x = 0 coagulation bath composition
         if (idx == 0) w[gid] = water_CB;
         double ww = w[gid];
@@ -447,16 +424,11 @@ __global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, do
         if (cc < 0.0) cc = 0.0;
         else if (cc > 1.0) cc = 1.0;
         
-        // assign muNS
-        muNS[gid] = /* (1.0 + cc) * */ ww;
+        // assign muNS for calculating laplacian
+        muNS[gid] =  ww;
         
-        // find Diffusion coefficient for water 
-        // first trying a linear relationship
-        // then we'll try with phillies method
-        // note we're re-using the Mob array
         double D_NS_phil = philliesDiffusion(cc,gamma,nu,Dw,Mweight,Mvolume);
         Mob[gid] = D_NS_phil;
-        //Mob[gid] = Dw * (1.0 - cc);
         if (Mob[gid] < 0.0) Mob[gid] = 0.0;
     }
     
@@ -497,33 +469,9 @@ __global__ void update_water(double* w,double* df, double* Mob, double* nonUnifo
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        //nonUniformLap[gid] = laplacianNonUniformMob(df,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
-        // is this syncthreads necessary?
-        //__syncthreads();
-        //if (idx == 0) w[gid] = water_CB;
-        //w[gid] += 10.0*df[gid]*dt;
-       w[gid] += nonUniformLap[gid]*dt;
+        w[gid] += nonUniformLap[gid]*dt;
     }
 }
-// for calculating water concentration and chi concentration
-/*__global__ void calculateWaterChi(double *w, double *chi, int nx, int ny, int nz, double water_CB, int current_step, double dt, double chiCond, double chiPN, double chiPS)
-{
-    // get unique thread id
-    int idx = blockIdx.x*blockDim.x + threadIdx.x;
-    int idy = blockIdx.y*blockDim.y + threadIdx.y;
-    int idz = blockIdx.z*blockDim.z + threadIdx.z;
-    if (idx<nx && idy<ny && idz<nz)
-    {
-            int gid = nx*ny*idz + nx*idy + idx;
-        	int idx = blockIdx.x*blockDim.x + threadIdx.x;
-            double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
-	        w[gid] = water_diff;
-            double chiPS_diff = chiPN*water_diff + chiPS*(1.0-water_diff);
-            chi[gid] = chiPS_diff;
-    }
-}*/
-//(w_d,chi_d,nx,ny,nz,water_CB,current_step,dt,chiCond);
-
 
 
 /**********************************************************************
@@ -545,7 +493,7 @@ __global__ void init_cuRAND(unsigned long seed,curandState *state,int nx,int ny,
 /************************************************************
   * Add random fluctuations for non-trivial solution (cuRand)
   ***********************************************************/
-__global__ void addNoise(double *c,int nx, int ny, int nz, double dt, int current_step,double chiCond, 
+__global__ void addNoise(double *c,int nx, int ny, int nz, double dt, int current_step, 
                          double water_CB,double phiCutoff,curandState *state)
 {
     // get unique thread id
@@ -555,32 +503,12 @@ __global__ void addNoise(double *c,int nx, int ny, int nz, double dt, int curren
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        // double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
         double noise = curand_uniform_double(&state[gid]);
         double cc = c[gid];
         double noiseScale = 1.0;
         // add random fluctuations with euler update
         if (cc > phiCutoff) noise = 0.5; // no fluctuations for phi < 0
         else if (cc < 0.0) noise = 0.5;  // no fluctuations for phi > phiCutoff
-        // ------------------------------------------------------
-        // TODO scaling noise
-        // ------------------------------------------------------
-        // need to minimise noise effect on vitrified morphology
-        // testing different methods
-        // ------------------------------------------------------
-        // stepwise decrease in noise
-        // if (water_cutoff > 0.3) noise = 0.5;  
-        // scaling noise based off of water concentration 
-        // using a simple exponential function
-        /*if (water_cutoff > 0.3) {
-            double noise_xNorm = (water_cutoff - 0.3)/(water_CB-0.3);
-            double noiseScale = 1.0 * exp(-10.0*noise_xNorm);
-        }*/
-        // scaling noise similar to mobility scaling
-        /*if (water_cutoff > 0.30) {
-            double xWnorm = (water_cutoff - 0.30)/(water_CB-0.30);
-            double noiseScale = 1.0 - (0+((1.0 - 0.0)/(1.0 + exp(-10.0*(xWnorm-(0.0+1.0)/2)))));
-        }*/
         c[gid] += 0.1*(noise-0.5)*dt*noiseScale;
     }
 }

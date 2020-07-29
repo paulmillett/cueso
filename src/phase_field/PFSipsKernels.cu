@@ -1,6 +1,6 @@
  /*
  * PFSipsKernels.cpp
- * Copyright (C) 2018 Joseph Carmack <joseph.liping@gmail.com>
+ * Copyright (C) 2020 M. Rosario Cervellere <rosario.cervellere@gmail.com>
  *
  * Distributed under terms of the MIT license.
  */

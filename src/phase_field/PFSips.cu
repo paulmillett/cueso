@@ -39,28 +39,26 @@ PFSips::PFSips(const GetPot& input_params)
     bz = input_params("PFSips/bz",1);
     numSteps = input_params("Time/nstep",1);
     co = input_params("PFSips/co",0.20);
-    c2 = input_params("PFSips/c2",0.20);
-    c3 = input_params("PFSips/c3",0.20);
-    r1 = input_params("PFSips/r1",1.0);
-    r2 = input_params("PFSips/r2",0.0);
-    NS_depth = input_params("PFSips/NS_depth",10);
     M = input_params("PFSips/M",1.0);
     mobReSize = input_params("PFSips/mobReSize",0.35);
     kap = input_params("PFSips/kap",1.0);
     water_CB = input_params("PFSips/water_CB",1.0);
+    NS_in_dope = input_params("PFSips/NS_in_dope",0.0);
     mobReSize = input_params("PFSips/mobReSize",0.35);
     chiPS = input_params("PFSips/chiPS",0.034);
     chiPN = input_params("PFSips/chiPN",1.5);
-    chiCond = input_params("PFSips/chiCond",0);
-    chiFreeze = input_params("PFSips/chiFreeze",1.75);
     phiCutoff = input_params("PFSips/phiCutoff",0.75);
     N = input_params("PFSips/N",100.0);
     A = input_params("PFSips/A",1.0);
-    Tinit = input_params("PFSips/Tinit",298);
+    Tinit = input_params("PFSips/Tinit",298.0);
+    Tcast = input_params("PFSips/Tcast",298.0);
     noiseStr = input_params("PFSips/noiseStr",0.1);
     D0 = input_params("PFSips/D0",1.0);
+    Dw = input_params("PFSips/Dw",1.0);
     nu = input_params("PFSips/nu",1.0);
+    nuDw = input_params("PFSips/nuDw",1.0);
     gamma = input_params("PFSips/gamma",1.0);
+    gammaDw = input_params("PFSips/gammaDw",1.0);
     Mweight = input_params("PFSips/Mweight",100.0);
     Mvolume = input_params("PFSips/Mvolume",0.1);
     numOutputs = input_params("Output/numOutputs",1);
@@ -109,10 +107,11 @@ PFSips::~PFSips()
 
     cudaFree(c_d);
     cudaFree(df_d);
-    cudaFree(cpyBuff_d);
     cudaFree(Mob_d);
+    cudaFree(w_d);
+    cudaFree(muNS_d);
     cudaFree(nonUniformLap_d);
-    cudaFree(Mob_d);
+    cudaFree(cpyBuff_d);
     cudaFree(devState);
 }
 
@@ -128,47 +127,16 @@ void PFSips::initSystem()
     // ----------------------------------------
     // Initialize concentration fields:
     // ----------------------------------------
-	 srand(time(NULL));      // setting the seed  
-	 // random initialization
-    int xHolder = 0;
-    int zone1 = r1*(nx-NS_depth); 
-    int zone2 = r2*(nx-NS_depth);
-    int zone3 = nx - zone1 - zone2 - NS_depth; 
+    srand(time(NULL));      // setting the seed  
+    double r = 0.0;
     for(size_t i=0;i<nxyz;i++) {
-        double r = (double)rand()/RAND_MAX;
-        // create NonSolvent layer
-        while (xHolder < NS_depth) 
-        {
-            c.push_back(0.0);
-            xHolder++;
-        }
-        xHolder = 0;
-        // initialize first polymer layer
-        while (xHolder < zone1) 
-        {
-            r = (double)rand()/RAND_MAX; 
-            c.push_back(co + 0.1*(r-0.5)); 
-            xHolder++;
-        }
-        xHolder = 0;
-        // initialize second polymer layer
-        while (xHolder < zone2) 
-        {
-            r = (double)rand()/RAND_MAX; 
-            c.push_back(c2 + 0.1*(r-0.5)); 
-            xHolder++;
-        }
-        xHolder = 0;
-        // initialize third polymer layer
-        while (xHolder < zone3) 
-        {
-            r = (double)rand()/RAND_MAX; 
-            c.push_back(c3 + 0.1*(r-0.5)); 
-            xHolder++;
-        }
-        xHolder = 0;
+        r = (double)rand()/RAND_MAX;
+        // initialize polymer phase
+        c.push_back(co + 0.1*(r-0.5));
+        // initialize nonsolvent phase
+        water.push_back(NS_in_dope);
     }
-    
+
     // ----------------------------------------
     // Allocate memory on device and copy data
     // and copy data from host to device
@@ -176,21 +144,35 @@ void PFSips::initSystem()
 
     // allocate memory on device
     size = nxyz*sizeof(double);
+    // allocate polymer species
     cudaMalloc((void**) &c_d,size);
     cudaCheckErrors("cudaMalloc fail");
+    // allocate space for laplacian
     cudaMalloc((void**) &df_d,size);
     cudaCheckErrors("cudaMalloc fail");
+    // allocate water concentration
+    cudaMalloc((void**) &w_d,size);
+    cudaCheckErrors("cudaMalloc fail");
+    // allocate space for laplacian
+    cudaMalloc((void**) &muNS_d,size);
+    cudaCheckErrors("cudaMalloc fail");
+    // copy buffer
     cudaMalloc((void**) &cpyBuff_d,size);
     cudaCheckErrors("cudaMalloc fail");
+    // allocate mobility
     cudaMalloc((void**) &Mob_d,size);
     cudaCheckErrors("cudaMalloc fail");
+    // allocate nonuniform laplacian for mobility 
+    // and water diffusion coefficient
     cudaMalloc((void**) &nonUniformLap_d,size);
     cudaCheckErrors("cudaMalloc fail");
     // allocate memory for cuRAND state
     cudaMalloc((void**) &devState,nxyz*sizeof(curandState));
     cudaCheckErrors("cudaMalloc fail");
-    // copy concentration array to device
+    // copy concentration and water array to device
     cudaMemcpy(c_d,&c[0],size,cudaMemcpyHostToDevice);
+    cudaCheckErrors("cudaMemcpy H2D fail");
+    cudaMemcpy(w_d,&water[0],size,cudaMemcpyHostToDevice);
     cudaCheckErrors("cudaMemcpy H2D fail");
     
     // ----------------------------------------
@@ -225,42 +207,65 @@ void PFSips::computeInterval(int interval)
     {
         // calculate the laplacian of c_d and store in df_d
         calculateLapBoundaries<<<blocks,blockSize>>>(c_d,df_d,nx,ny,nz,dx,bx,by,bz); 
-        cudaCheckAsyncErrors("calculateLap kernel fail");
+        cudaCheckAsyncErrors("calculateLap polymer kernel fail");
         cudaDeviceSynchronize();
         
         // calculate the chemical potential and store in df_d
-        calculateChemPotFH<<<blocks,blockSize>>>(c_d,df_d,kap,A,water_CB,chiCond,chiPS,chiPN,
-        														N,nx,ny,nz,current_step,dt);
+        calculateChemPotFH<<<blocks,blockSize>>>(c_d,w_d,df_d,kap,A,chiPS,chiPN,N,nx,ny,nz,current_step,dt);
         cudaCheckAsyncErrors("calculateChemPotFH kernel fail");
         cudaDeviceSynchronize();
         
         // calculate mobility and store it in Mob_d
-        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,mobReSize,nx,ny,nz,phiCutoff,water_CB,
-        								        current_step,dt,chiCond,N,gamma,nu,D0,Mweight,Mvolume);
+        calculateMobility<<<blocks,blockSize>>>(c_d,Mob_d,M,mobReSize,nx,ny,nz,phiCutoff,N,gamma,nu,D0,Mweight,Mvolume,Tcast);
         cudaCheckAsyncErrors("calculateMobility kernel fail");
         cudaDeviceSynchronize();
-     
+
         // calculate the laplacian of the chemical potential, then update c_d
         // using an Euler update
-        lapChemPotAndUpdateBoundaries<<<blocks,blockSize>>>(c_d,df_d,Mob_d,nonUniformLap_d,
-        												    M,dt,nx,ny,nz,dx,bx,by,bz);
+        lapChemPotAndUpdateBoundaries<<<blocks,blockSize>>>(c_d,df_d,Mob_d,nonUniformLap_d, dt,nx,ny,nz,dx,bx,by,bz);
         cudaCheckAsyncErrors("lapChemPotAndUpdateBoundaries kernel fail");
         cudaDeviceSynchronize();
-
-        // add thermal fluctuations of polymer concentration
-        addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, current_step, chiCond, water_CB, phiCutoff, devState);
-        cudaCheckAsyncErrors("addNoise kernel fail");
+        
+        // calculate mu for Nonsolvent diffusion
+        calculate_muNS<<<blocks,blockSize>>>(w_d,c_d,muNS_d,Mob_d,Dw,water_CB,gammaDw,nuDw,Mweight,Mvolume,nx,ny,nz);
+        cudaCheckAsyncErrors('calculate muNS kernel fail');
         cudaDeviceSynchronize();
+        
+        // calculate laplacian for diffusing water
+        calculateLapBoundaries_muNS<<<blocks,blockSize>>>(df_d,muNS_d,nx,ny,nz,dx,bx,by,bz);
+        cudaCheckAsyncErrors('calculateLap water kernel fail');    
+        cudaDeviceSynchronize();
+        
+        // calculate nonuniform laplacian for diffusion
+        calculateNonUniformLapBoundaries_muNS<<<blocks,blockSize>>>(muNS_d,Mob_d,nonUniformLap_d,nx,ny,nz,dx,bx,by,bz);
+        cudaCheckAsyncErrors('calculateNonUniformLap muNS kernel fail');
+        cudaDeviceSynchronize();
+        
+        // euler update water diffusing
+        update_water<<<blocks,blockSize>>>(w_d,df_d,Mob_d,nonUniformLap_d,dt,nx,ny,nz,dx,bx,by,bz);
+        cudaCheckAsyncErrors("updateWater kernel fail");
+        cudaDeviceSynchronize();
+        
+        // add thermal fluctuations of polymer concentration
+        addNoise<<<blocks,blockSize>>>(c_d, nx, ny, nz, dt, current_step, water_CB, phiCutoff, devState);
+        cudaCheckAsyncErrors("addNoise kernel fail");
+        cudaDeviceSynchronize(); 
     }
 
     // ----------------------------------------
     //	Copy data back to host for writing:
     // ----------------------------------------
-
+    
+    // polymer concentration
     populateCopyBufferSIPS<<<blocks,blockSize>>>(c_d,cpyBuff_d,nx,ny,nz);
     cudaMemcpyAsync(&c[0],c_d,size,cudaMemcpyDeviceToHost);
     cudaCheckErrors("cudaMemcpyAsync D2H fail");
-    
+    cudaDeviceSynchronize();
+    // nonsolvent concentration
+    populateCopyBufferSIPS<<<blocks,blockSize>>>(w_d,cpyBuff_d,nx,ny,nz);
+    cudaMemcpyAsync(&water[0],w_d,size,cudaMemcpyDeviceToHost);
+    cudaCheckErrors("cudaMemcpyAsync D2H fail");
+    cudaDeviceSynchronize();
 }
 
 
@@ -277,7 +282,10 @@ void PFSips::writeOutput(int step)
     // -----------------------------------
 
     ofstream outfile;
+    ofstream outfile2;
     stringstream filenamecombine;
+    stringstream filenamecombine2;
+    
     filenamecombine << "vtkoutput/c_" << step << ".vtk";
     string filename = filenamecombine.str();
     outfile.open(filename.c_str(), std::ios::out);
@@ -321,7 +329,56 @@ void PFSips::writeOutput(int step)
     // -----------------------------------
 
     outfile.close();
-        
+    // vtkoutput for water
+    // -----------------------------------
+    // Define the file location and name:
+    // -----------------------------------
+
+
+    filenamecombine2 << "vtkoutput/w_" << step << ".vtk";
+    string filename2 = filenamecombine2.str();
+    outfile2.open(filename2.c_str(), std::ios::out);
+
+    // -----------------------------------
+    //	Write the 'vtk' file header:
+    // -----------------------------------
+
+    outfile2 << "# vtk DataFile Version 3.1" << endl;
+    outfile2 << "VTK file containing grid data" << endl;
+    outfile2 << "ASCII" << endl;
+    outfile2 << " " << endl;
+    outfile2 << "DATASET STRUCTURED_POINTS" << endl;
+    outfile2 << "DIMENSIONS" << d << nx << d << ny << d << nz << endl;
+    outfile2 << "ORIGIN " << d << 0 << d << 0 << d << 0 << endl;
+    outfile2 << "SPACING" << d << 1.0 << d << 1.0 << d << 1.0 << endl;
+    outfile2 << " " << endl;
+    outfile2 << "POINT_DATA " << nxyz << endl;
+    outfile2 << "SCALARS w float" << endl;
+    outfile2 << "LOOKUP_TABLE default" << endl;
+
+    // -----------------------------------
+    //	Write the data:
+    // NOTE: x-data increases fastest,
+    //       then y-data, then z-data
+    // -----------------------------------
+
+    for(size_t k=0;k<nz;k++)
+        for(size_t j=0;j<ny;j++)
+            for(size_t i=0;i<nx;i++)
+            {
+                int id = nx*ny*k + nx*j + i;
+                double point = water[id];
+                // for paraview
+                if (point < 1e-30) point = 0.0; // making really small numbers == 0 
+                outfile2 << point << endl;
+            }
+
+    // -----------------------------------
+    //	Close the file:
+    // -----------------------------------
+
+    outfile2.close();
+    
 }
 
 

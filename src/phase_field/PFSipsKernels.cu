@@ -1,6 +1,6 @@
-/*
+ /*
  * PFSipsKernels.cpp
- * Copyright (C) 2018 Joseph Carmack <joseph.liping@gmail.com>
+ * Copyright (C) 2020 M. Rosario Cervellere <rosario.cervellere@gmail.com>
  *
  * Distributed under terms of the MIT license.
  */
@@ -192,24 +192,14 @@ __device__ double laplacianUpdateBoundaries(double* f,int gid, int x, int y, int
 
 
 /*************************************************************
-  * Compute diffusive interaction parameter in x-direction
+  * compute chi with linear weighted average
   ***********************************************************/
 
-__device__ double chiDiffuse(double water_CB, double chiPS, double chiPN, double chiCond, int current_step, double dt)
+__device__ double chiDiffuse(double locWater, double chiPS, double chiPN)
 {
-	int idx = blockIdx.x*blockDim.x + threadIdx.x;
-    double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
-    double chiPS_diff = chiPN*water_diff + chiPS*(1.0-water_diff);
-	return chiPS_diff;
+    double chi = chiPN*locWater + chiPS*(1.0-locWater);
+	return chi;
 }
-
-__device__ double waterDiff(double water_CB, int current_step, double dt,double chiCond)
-{
-	int idx = blockIdx.x*blockDim.x + threadIdx.x;
-    double water_diff = (water_CB-0.0)*erfc((idx)/(2.0*sqrt(chiCond*double(current_step)*dt)))+ 0.0;
-	return water_diff;
-}
-
 
 
 /*************************************************************
@@ -225,13 +215,13 @@ __device__ double waterDiff(double water_CB, int current_step, double dt,double 
 	*
 	***********************************************************/
 
-__device__ double freeEnergyBiFH(double cc, double chiPS_diff, double N, double lap_c, double kap, double A)
+__device__ double freeEnergyBiFH(double cc, double chi, double N, double lap_c, double kap, double A)
 {
    double c_fh = 0.0;
    if (cc < 0.0) c_fh = 0.0001;
    else if (cc > 1.0) c_fh = 0.999;
    else c_fh = cc;
-   double FH = (log(c_fh) + 1.0)/N - log(1.0-c_fh) - 1.0 + chiPS_diff*(1.0-2.0*c_fh) - kap*lap_c;
+   double FH = (log(c_fh) + 1.0)/N - log(1.0-c_fh) - 1.0 + chi*(1.0-2.0*c_fh) - kap*lap_c;
    if (cc <= 0.0) FH = -1.5*A*sqrt(-cc) - kap*lap_c;   
    return FH;
 }
@@ -311,8 +301,8 @@ __global__ void testLapNonUniformMob(double* f, double *Mob, int nx, int ny, int
 
 
 /*********************************************************
-  * Compute the laplacian of the concentration array c
-  * and store it in the device array df.
+  * Compute the laplacian of the concentration array c and w
+  * and store it in the device array df and wdf
   *******************************************************/
 
 __global__ void calculateLapBoundaries(double* c,double* df, int nx, int ny, int nz, 
@@ -331,15 +321,14 @@ __global__ void calculateLapBoundaries(double* c,double* df, int nx, int ny, int
 
 
 
+
 /*********************************************************
   * Computes the chemical potential of a concentration
   * order parameter and stores it in the df_d array.
   *******************************************************/
 
 
-__global__ void calculateChemPotFH(double* c,double* df, double kap, double A, double water_CB,
-                                   double chiCond, double chiPS, double chiPN, double N, 
-                                   int nx, int ny, int nz, int current_step, double dt)
+__global__ void calculateChemPotFH(double* c,double* w,double* df, double kap, double A, double chiPS, double chiPN, double N, int nx, int ny, int nz, int current_step, double dt)
 {
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -349,9 +338,10 @@ __global__ void calculateChemPotFH(double* c,double* df, double kap, double A, d
     {
         int gid = nx*ny*idz + nx*idy + idx;
         double cc = c[gid];
+        double ww = w[gid];
         double lap_c = df[gid];
         // compute interaction parameter
-        double chi = chiDiffuse(water_CB,chiPS,chiPN,chiCond,current_step,dt);
+        double chi = chiDiffuse(ww,chiPS,chiPN);
         // compute chemical potential
         df[gid] = freeEnergyBiFH(cc,chi,N,lap_c,kap,A); 
     }
@@ -363,9 +353,9 @@ __global__ void calculateChemPotFH(double* c,double* df, double kap, double A, d
   * parameter and stores it in the Mob_d array.
   *******************************************************/
   
-__global__ void calculateMobility(double* c, double* Mob, double M,double mobReSize, int nx, int ny, int nz,
-											 double phiCutoff,double water_CB, int current_step, double dt,double chiCond, double N,
-        									 double gamma, double nu, double D0, double Mweight, double Mvolume)
+__global__ void calculateMobility(double* c,double* Mob, double M,double mobReSize, int nx, int ny, int nz,
+											 double phiCutoff, double N,
+        									 double gamma, double nu, double D0, double Mweight, double Mvolume, double Tcast)
 {
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
     int idy = blockIdx.y*blockDim.y + threadIdx.y;
@@ -377,28 +367,15 @@ __global__ void calculateMobility(double* c, double* Mob, double M,double mobReS
         double cc = c[gid];
         double FH2 = d2dc2_FH(cc,N);
         double D_phil = philliesDiffusion(cc,gamma,nu,D0,Mweight,Mvolume);
-        M = D0*D_phil/FH2;
+        double Dtemp = D0*Tcast/273.15;
+        M = Dtemp*D_phil/FH2;
         if (M > 1.0) M = 1.0;     // making mobility max = 1
         else if (M < 0.0) M = 0.001; // mobility min = 0.001
-        // exponential decrease in mobility 
-        // after phiCutoff has been reached
+        // Using phiCutoff as vitrification
         if (cc > phiCutoff) { 
-            double xNorm = (cc - phiCutoff)/(1.0 - phiCutoff);
-            double mobScale = 1.0*exp(-10.0*xNorm); // 
-            M *= mobScale;
+            M *= 1e-6;
         }
-        // ---------------------------------------------------------
-        // TODO 
-        // scaling mobility based on water concentration
-        // use lower diffusion instead...?
-        // ---------------------------------------------------------
-        // testing mobility scaling with water concentration
-        //double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
-        /*if (water_cutoff > 0.30) {
-            double xWnorm = (water_cutoff - 0.30)/(water_CB-0.30);
-            double waterScale = 1.0 - (0+((1.0 - 0.0)/(1.0 + exp(-10.0*(xWnorm-(0.0+1.0)/2)))));
-            M *= waterScale;
-        }*/
+        // resize mobility to be similar to experiments
         M *= mobReSize;
         Mob[gid] = M;		  
     }
@@ -410,9 +387,7 @@ __global__ void calculateMobility(double* c, double* Mob, double M,double mobReS
   * to perform an Euler update of the concentration in time.
   ***********************************************************************************/
 
-__global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double* nonUniformLap,
-                                              double M, double dt, int nx, int ny, int nz, double h, 
-                                              bool bX, bool bY, bool bZ)
+__global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,double* nonUniformLap, double dt, int nx, int ny, int nz, double h,bool bX, bool bY, bool bZ)
 {
     // get unique thread id
     int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -423,8 +398,78 @@ __global__ void lapChemPotAndUpdateBoundaries(double* c,double* df,double* Mob,d
         int gid = nx*ny*idz + nx*idy + idx;
         // compute chemical potential laplacain with non-uniform mobility
         // and user defined boundaries (no-flux or PBCs)
-        nonUniformLap[gid] = laplacianNonUniformMob(df,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);    
+        nonUniformLap[gid] = laplacianNonUniformMob(df,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
         c[gid] += nonUniformLap[gid]*dt;
+    } 
+}
+
+
+
+__global__ void calculate_muNS(double*w, double*c, double* muNS, double* Mob, double Dw, double water_CB, double gamma, double nu, double Mweight, double Mvolume, int nx, int ny, int nz)
+{
+    // get unique thread id
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        
+        // calculate mu for NonSolvent NS diffusion
+        // make x = 0 coagulation bath composition
+        if (idx == 0) w[gid] = water_CB;
+        double ww = w[gid];
+        // check that polymer < 1.0 and greater than 0.0
+        double cc = c[gid];
+        if (cc < 0.0) cc = 0.0;
+        else if (cc > 1.0) cc = 1.0;
+        
+        // assign muNS for calculating laplacian
+        muNS[gid] =  ww;
+        
+        double D_NS_phil = philliesDiffusion(cc,gamma,nu,Dw,Mweight,Mvolume);
+        Mob[gid] = D_NS_phil;
+        if (Mob[gid] < 0.0) Mob[gid] = 0.0;
+    }
+    
+}
+
+__global__ void calculateLapBoundaries_muNS(double* df, double* muNS, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ)
+{
+    // get unique thread id
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        df[gid] = laplacianUpdateBoundaries(muNS,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
+    }
+}
+
+__global__ void calculateNonUniformLapBoundaries_muNS(double* muNS, double* Mob,double* nonUniformLap, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ)
+{
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        nonUniformLap[gid] = laplacianNonUniformMob(muNS,Mob,gid,idx,idy,idz,nx,ny,nz,h,bX,bY,bZ);
+    }
+}
+
+__global__ void update_water(double* w,double* df, double* Mob, double* nonUniformLap, double dt, int nx, int ny, int nz, double h, bool bX, bool bY, bool bZ)
+{
+    // here we're re-using the Mob array for Dw_nonUniform
+    // get unique thread id
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int idy = blockIdx.y*blockDim.y + threadIdx.y;
+    int idz = blockIdx.z*blockDim.z + threadIdx.z;
+    if (idx<nx && idy<ny && idz<nz)
+    {
+        int gid = nx*ny*idz + nx*idy + idx;
+        w[gid] += nonUniformLap[gid]*dt;
     }
 }
 
@@ -448,7 +493,7 @@ __global__ void init_cuRAND(unsigned long seed,curandState *state,int nx,int ny,
 /************************************************************
   * Add random fluctuations for non-trivial solution (cuRand)
   ***********************************************************/
-__global__ void addNoise(double *c,int nx, int ny, int nz, double dt, int current_step,double chiCond, 
+__global__ void addNoise(double *c,int nx, int ny, int nz, double dt, int current_step, 
                          double water_CB,double phiCutoff,curandState *state)
 {
     // get unique thread id
@@ -458,32 +503,12 @@ __global__ void addNoise(double *c,int nx, int ny, int nz, double dt, int curren
     if (idx<nx && idy<ny && idz<nz)
     {
         int gid = nx*ny*idz + nx*idy + idx;
-        double water_cutoff = waterDiff(water_CB,current_step,dt,chiCond);
         double noise = curand_uniform_double(&state[gid]);
         double cc = c[gid];
         double noiseScale = 1.0;
         // add random fluctuations with euler update
         if (cc > phiCutoff) noise = 0.5; // no fluctuations for phi < 0
         else if (cc < 0.0) noise = 0.5;  // no fluctuations for phi > phiCutoff
-        // ------------------------------------------------------
-        // TODO scaling noise
-        // ------------------------------------------------------
-        // need to minimise noise effect on vitrified morphology
-        // testing different methods
-        // ------------------------------------------------------
-        // stepwise decrease in noise
-        // if (water_cutoff > 0.3) noise = 0.5;  
-        // scaling noise based off of water concentration 
-        // using a simple exponential function
-        /*if (water_cutoff > 0.3) {
-            double noise_xNorm = (water_cutoff - 0.3)/(water_CB-0.3);
-            double noiseScale = 1.0 * exp(-10.0*noise_xNorm);
-        }*/
-        // scaling noise similar to mobility scaling
-        /*if (water_cutoff > 0.30) {
-            double xWnorm = (water_cutoff - 0.30)/(water_CB-0.30);
-            double noiseScale = 1.0 - (0+((1.0 - 0.0)/(1.0 + exp(-10.0*(xWnorm-(0.0+1.0)/2)))));
-        }*/
         c[gid] += 0.1*(noise-0.5)*dt*noiseScale;
     }
 }

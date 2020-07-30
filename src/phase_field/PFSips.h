@@ -22,8 +22,7 @@ class PFSips : public CuesoBase {
         int numSteps;
         int numOutputs;
         int outInterval;
-        double co,c2,c3;        // polymer concentration fields
-        double r1,r2;           // ratio for 1st and 2nd layers
+        double co;        // polymer concentration fields
         double M;
         double mobReSize;
         double w;
@@ -31,34 +30,35 @@ class PFSips : public CuesoBase {
         double dt;
         double dx,dy,dz;
         double water_CB;
-        int NS_depth;
-        double chiCond;
+        double NS_in_dope;
         double phiCutoff;
         double chiPS;
         double chiPN;
-        double chiFreeze;
         double N;
-        double alpha;
-        double beta;
-        double eta;
         double A;
         double Tbath;
         double Tinit;
+        double Tcast;
         double noiseStr;
         double nu;
+        double nuDw;
         double gamma;
+        double gammaDw;
         double D0;
+        double Dw;
         double Mweight;
         double Mvolume;
         bool bx,by,bz;
         Rand rng;
         vector<double> c;
-        double thermFluc_d;
+        vector<double> water;
     
         // cuda members
         int size;
-        double * c_d;       			// concentration array
-        double * df_d;      			// chemical potential array
+        double * c_d;        // concentration array
+        double * df_d;       // chemical potential array
+        double * w_d;        // non-solvent array
+        double * muNS_d;     // laplacian array for fickian diffusion
         double * cpyBuff_d; 			// Copy buffer for ansynchronous data transfer
         double * Mob_d;     			// mobility
         double * nonUniformLap_d;	    // laplacian of mobility and df
